@@ -1,0 +1,138 @@
+# HookPort
+
+A control tower for events between applications: receive events over HTTP, fan them out to configured targets, track every delivery, retry automatically, replay manually.
+
+Portfolio project for product-developer roles with an interoperability flavor. Priorities: ship a convincing v1 FAST, stay extensible, be explainable in an interview.
+
+## Project rules
+- The working method (order of work, micro-steps, commits, naming, clean code, comments) is defined in the user-level CLAUDE.md and applies here.
+- Keep v1 small. Anything under "Out of scope" is NOT built in v1.
+- Every behavior in "Tests" must be covered by an automated test.
+- Portfolio project: the owner must be able to explain every piece in an interview. The `DeliveryTransport` interface is the only abstraction anticipated; everything else is written directly.
+
+## Stack
+- PHP 8.5, Symfony 8.1, PostgreSQL via Doctrine ORM (schema changes through migrations only), Docker Compose (PostgreSQL, worker); local dev may use the Symfony CLI (`symfony serve -d`, `symfony console`)
+- Symfony Messenger with the Doctrine transport (swappable later for RabbitMQ), 1+ worker processes
+- Dashboard v1: Vue 3 + TypeScript SPA (Vite) consuming a JSON API exposed by Symfony, with polling refresh. Symfony is API-only: no Twig.
+- Authentication (Symfony Security, two firewalls): (1) `POST /api/events` is stateless, with a custom authenticator that verifies `X-Source` + the HMAC `X-Signature` on the RAW body; (2) the dashboard API uses `json_login` with a session cookie. SPA and API are same-origin (Vite dev proxy in dev, reverse proxy in prod), so no CORS is needed.
+- PHPUnit for tests
+
+## Core concepts
+- **Source**: an emitter allowed to send events. Has a slug and a shared secret (used to verify incoming signatures).
+- **Target**: a destination. Has a protocol (enum, v1: `http`), a JSON `config` (v1: `{ "url": ... }`) and a secret (used to sign outgoing requests; stored readable, not hashed).
+- **EventType**: catalog of known event types (slug + label), used to configure mappings.
+- **Mapping**: routing rule, ONE ROW PER TARGET: (source nullable, event_type nullable, target, max_attempts default 5). A null source or type means "any" (wildcard). A mapping matches an event if (source = event source OR null) AND (type = event type OR null).
+- **EventIn**: an event received. Has an internal uuid AND the external id given by the emitter (unique together with the source). Type is stored as a plain slug (no foreign key: unknown types are accepted). Payload is JSON.
+- **Delivery**: one event to one target (unique per event + target). Holds the current state: status, attempts_count, max_attempts (SNAPSHOT copied from the mapping at creation), next_attempt_at. References the target directly (NOT a snapshot, so fixing a target URL benefits retries and replays).
+- **DeliveryAttempt**: log of one try: attempt_no, sent_at, duration_ms, response_code (nullable: timeouts have none), error (nullable), response_excerpt (truncated, nullable).
+
+Delivery statuses: `pending`, `retrying`, `delivered`, `failed`.
+Event global state is DERIVED from its deliveries, never stored: `unrouted` (zero deliveries), `in progress`, `delivered`, `needs attention`.
+
+## Data model
+
+| Table | Columns |
+|---|---|
+| User | id, login (unique), password (hashed by Symfony, no salt column), roles (json) |
+| Source | id, slug (unique), name, secret, enabled |
+| Target | id, name, protocol (enum), config (json), secret, enabled |
+| EventType | id, slug (unique), label, enabled |
+| Mapping | id, source (nullable FK), event_type (nullable FK), target (FK), max_attempts (default 5), enabled |
+| EventIn | uuid, source (FK), external_id, type (text slug), payload (jsonb), received_at. Unique (source, external_id) |
+| Delivery | uuid, event_in (FK), target (FK), status, attempts_count, max_attempts, next_attempt_at, unique (event_in, target) |
+| DeliveryAttempt | id, delivery (FK), attempt_no, sent_at, duration_ms, response_code (nullable), error (nullable), response_excerpt (nullable) |
+
+Indexes to plan: EventIn(received_at), Delivery(status, next_attempt_at).
+
+## Deletion and disabling
+- Logs are never deleted by users: EventIn, Delivery and DeliveryAttempt have no delete action. The only removal is an age-based purge (v1.1, ROLE_ADMIN only). Use database-level `ON DELETE CASCADE` for EventIn -> Delivery -> DeliveryAttempt so that purge is a plain delete.
+- Configuration entities (Source, Target, EventType, Mapping) have an `enabled` flag. Disabling is the normal way to retire one. Dashboard lists hide disabled items by default, with a toggle to show them. The events list is never filtered.
+- Hard delete of a Source, Target or EventType is ROLE_ADMIN only, requires explicit confirmation, and is refused if events or deliveries still reference it (answer: "disable it instead"). When allowed, it also deletes its Mappings (cascade).
+- A disabled Source: its events are rejected by the authenticator (403).
+- A disabled Mapping: creates no new deliveries.
+- A disabled Target: the worker sends nothing and records a failed attempt "target disabled"; the delivery becomes `failed` and can be replayed after the target is re-enabled.
+- The demo account is read-only on configuration: it can browse, send fake payments and replay, but cannot disable or delete anything.
+
+## Entity design
+- Inverse relations: EventIn -> deliveries, Delivery -> attempts (ordered by attempt number). Global event state is computed from deliveries.
+- For the events list, do not load every delivery per event: use a join or aggregate query.
+- Constructors take the required fields; no setters for fields frozen at creation (e.g. `maxAttempts`). Admin-managed entities (Source, Target, EventType, Mapping) keep plain getters and setters for CRUD.
+
+## Flow
+1. `POST /api/events` with headers `X-Source`, `X-Signature` (HMAC-SHA256 of the raw body with the source secret) and a JSON body `{ "type", "id", "payload" }`.
+2. Reject invalid signature (401) or malformed body (422).
+3. Duplicate (source, id) already stored: return 200, do nothing.
+4. Store the event. Find matching mappings, create ONE Delivery per distinct target (if several mappings match the same target, deliver once), dispatch one Messenger message per delivery, answer `202` immediately.
+5. Unknown event type or no matching mapping: the event is still stored and answered with `202`; it has zero deliveries and shows as `unrouted` in the dashboard. Never answer 4xx for this (emitters like Stripe would retry forever).
+6. Worker sends a POST to the target with headers `X-Event-Id`, `X-Event-Type`, `X-Delivery-Attempt`, `X-Signature` (HMAC with the target secret). Short timeout (e.g. 5s).
+7. Record a DeliveryAttempt and update the Delivery status.
+
+## Retry policy
+- 2xx: `delivered`.
+- 5xx, timeout, connection error, 408, 429: `retrying` with exponential backoff (e.g. 1m, 5m, 30m, 2h), up to the delivery's max_attempts, then `failed`.
+- Other 4xx: `failed` immediately (retrying is pointless until config is fixed).
+- Manual replay of a failed delivery: dashboard button creates a new attempt and resets it to `pending`.
+- Replay of an unrouted event: re-runs the mapping lookup for the event (useful after adding a missing mapping) and creates the deliveries that now match.
+- Targets must dedupe on `X-Event-Id` (delivery is at-least-once). Document this.
+- Implementation: the policy is per delivery (`max_attempts`), which Messenger's built-in retry strategy (configured per transport) cannot express. Configure the transport without Messenger retries. The handler never throws on a delivery failure: it records the attempt, and on a retryable failure it re-dispatches the message with a `DelayStamp` computed from the attempt number and sets `next_attempt_at`.
+
+## Extensibility (design now, implement later)
+- Single interface `DeliveryTransport::deliver(EventIn, Target): DeliveryResult` where DeliveryResult is normalized (success / retryable failure / permanent failure + reason).
+- v1 ships only `HttpTransport`. AMQP/MQTT would be new implementations (Target.protocol enum + config JSON), no change to the core (retries, history, replay).
+
+## Dashboard (v1)
+- Events list (newest first): type, source, external id, time, global state (delivered / in progress / needs attention / unrouted).
+- Event detail: one row per delivery with colored status (green delivered, orange retrying, red failed), attempt count, next retry time. Replay button for unrouted events.
+- Delivery detail: attempt history (HTTP code, duration, error, response excerpt) and a Replay button.
+- Counters: events received, delivered, needing attention.
+- Admin screens: manage sources, targets, event types, mappings (simple CRUD; fixtures acceptable for the very first iterations).
+- Demo mode: a dedicated demo account gives access to the dashboard, with a "Send a fake payment" button to play with.
+
+## Demo targets (inside the same project, under `/demo/...`)
+Simulated external systems, clearly labeled as simulated in the README:
+- Billing: always OK
+- Logistics: fails ~50% of the time (500 or timeout) to show retries
+- Team channel: always unreachable, to show `failed` + replay (replay flips it to working)
+
+## Tests (must exist)
+- Invalid signature rejected
+- Duplicate (source, external id) ignored
+- Fan-out creates one delivery per matching target, none for non-matching
+- Overlapping wildcard mappings pointing to the same target create a single delivery
+- Unknown event type or no mapping: event stored, 202, zero deliveries (`unrouted`)
+- Replay of an unrouted event creates deliveries once a mapping exists
+- Target 500 triggers retry with backoff; retries exhausted leads to `failed`
+- Target 400 fails immediately without retry
+- Timeout handled as retryable
+- Replay on a failed delivery works
+- One failing target does not block the others
+- Changing a mapping's max_attempts does not affect existing deliveries
+- Disabled source rejected (403); disabled mapping creates no delivery
+- Disabled target: delivery fails with "target disabled" and can be replayed after re-enabling
+- Hard delete refused when events or deliveries reference the entity; allowed otherwise (ROLE_ADMIN only)
+- Demo account cannot modify or delete configuration
+
+## Out of scope for v1
+Multi-tenant, roles beyond a simple admin/demo split, payload transformation, AMQP/MQTT transports, external message broker, rate limiting, per-target custom retry policies, secret rotation, data purge.
+
+## Roadmap (put in README)
+- v1.1: scripts that generate events automatically to keep the demo lively; dead-letter view, alerts; purge of old events
+- v1.2: payload transformation/mapping
+- v1.3: AMQP transport (out), then MQTT
+- v2: multiple connectors and sources, optional e-invoicing mapping (Factur-X/UBL)
+
+## README requirements
+- One-sentence pitch, live demo link, short architecture diagram
+- Section "Why not just use RabbitMQ/Kafka?": a broker moves messages between systems you control; this project is the HTTP-facing layer on top (signature, routing config, per-target delivery history, replay). It uses a broker internally.
+- Section "Limits": PHP workers scale by process count; delivery is at-least-once; "delivered" means the target acknowledged receipt, not that it processed it.
+
+## Suggested build order
+This order is only a suggestion: the owner's order prevails. Each numbered item is a theme, NOT a single task: split it into micro-steps. Example for item 1: Docker Compose + PostgreSQL first; then ONE entity with its migration per step, in dependency order: Source, Target, EventType, Mapping, EventIn, Delivery, DeliveryAttempt.
+
+1. Docker Compose, Symfony skeleton, DB schema (entities above)
+2. Walking skeleton end to end, as thin as possible: ingest one event (no signature yet), one hardcoded mapping, worker delivers to a demo target, a minimal Vue page lists events and delivery statuses. Goal: something visible and testable fast, then iterate.
+3. Harden ingestion: signature check, dedupe, validation, unrouted events + tests
+4. Fan-out to many mappings, retry policy, failure handling + tests
+5. Demo targets (flaky, unreachable)
+6. Full dashboard: JSON API (events, deliveries, attempts, replay, fake payment, counters, admin CRUD), then the complete Vue UI
+7. README, diagram, deploy to the owner's VPS (hosting decided once the app is nearly done locally)
