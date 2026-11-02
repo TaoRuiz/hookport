@@ -3,12 +3,15 @@
 namespace App\Tests\Controller;
 
 use App\Entity\User;
+use App\Tests\CreatesUsers;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 final class UserManagementControllerTest extends WebTestCase
 {
+    use CreatesUsers;
+
     private KernelBrowser $client;
     private EntityManagerInterface $entityManager;
 
@@ -16,7 +19,6 @@ final class UserManagementControllerTest extends WebTestCase
     {
         $this->client = static::createClient();
         $this->entityManager = static::getContainer()->get(EntityManagerInterface::class);
-        $this->entityManager->createQuery('DELETE FROM '.User::class)->execute();
     }
 
     public function testAdminSeesEveryUserSortedByLogin(): void
@@ -238,19 +240,5 @@ final class UserManagementControllerTest extends WebTestCase
         $this->client->request('DELETE', '/api/users/'.$admin->getId());
 
         self::assertResponseStatusCodeSame(403);
-    }
-
-    /**
-     * @param list<string> $roles
-     */
-    private function createUser(string $login, array $roles): User
-    {
-        $user = new User($login);
-        $user->setRoles($roles);
-        $user->setPassword('not-used-by-these-tests');
-        $this->entityManager->persist($user);
-        $this->entityManager->flush();
-
-        return $user;
     }
 }

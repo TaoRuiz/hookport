@@ -2,14 +2,14 @@
 
 namespace App\Tests\Controller;
 
-use App\Entity\User;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Tests\CreatesUsers;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
-use Symfony\Component\PasswordHasher\Hasher\PasswordHasherFactoryInterface;
 
 final class LoginControllerTest extends WebTestCase
 {
+    use CreatesUsers;
+
     private const string LOGIN = 'admin';
     private const string PASSWORD = 'correct-password';
 
@@ -18,7 +18,7 @@ final class LoginControllerTest extends WebTestCase
     protected function setUp(): void
     {
         $this->client = static::createClient();
-        $this->replaceAllUsersWithOneKnownUser();
+        $this->createUser(self::LOGIN, plainPassword: self::PASSWORD);
     }
 
     public function testValidCredentialsReturnTheAuthenticatedUser(): void
@@ -62,17 +62,5 @@ final class LoginControllerTest extends WebTestCase
             'login' => $login,
             'password' => $password,
         ]);
-    }
-
-    private function replaceAllUsersWithOneKnownUser(): void
-    {
-        $container = static::getContainer();
-        $entityManager = $container->get(EntityManagerInterface::class);
-        $entityManager->createQuery('DELETE FROM '.User::class)->execute();
-
-        $user = new User(self::LOGIN);
-        $user->setPassword($container->get(PasswordHasherFactoryInterface::class)->getPasswordHasher($user)->hash(self::PASSWORD));
-        $entityManager->persist($user);
-        $entityManager->flush();
     }
 }
