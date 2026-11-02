@@ -121,6 +121,82 @@ final class UserManagementControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
+    public function testAdminChangesTheRoleOfAUser(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+        $demo = $this->createUser('demo', ['ROLE_DEMO']);
+
+        $this->client->jsonRequest('PATCH', '/api/users/'.$demo->getId(), ['role' => 'ROLE_ADMIN']);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(
+            ['ROLE_ADMIN', 'ROLE_USER'],
+            json_decode($this->client->getResponse()->getContent(), true)['roles'],
+        );
+    }
+
+    public function testAdminChangesThePasswordOfAUserWhoCanThenLogInWithIt(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+        $demo = $this->createUser('demo', ['ROLE_DEMO']);
+
+        $this->client->jsonRequest('PATCH', '/api/users/'.$demo->getId(), ['password' => 'a-brand-new-password']);
+
+        self::assertResponseIsSuccessful();
+
+        $this->client->request('POST', '/api/logout');
+        $this->client->jsonRequest('POST', '/api/login', [
+            'login' => 'demo',
+            'password' => 'a-brand-new-password',
+        ]);
+
+        self::assertResponseIsSuccessful();
+    }
+
+    public function testAdminCannotChangeOwnRole(): void
+    {
+        $admin = $this->createUser('admin', ['ROLE_ADMIN']);
+        $this->client->loginUser($admin);
+
+        $this->client->jsonRequest('PATCH', '/api/users/'.$admin->getId(), ['role' => 'ROLE_DEMO']);
+
+        self::assertResponseStatusCodeSame(403);
+        $this->entityManager->refresh($admin);
+        self::assertSame(['ROLE_ADMIN', 'ROLE_USER'], $admin->getRoles());
+    }
+
+    public function testModificationWithInvalidFieldsIsRefused(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+        $demo = $this->createUser('demo', ['ROLE_DEMO']);
+
+        $this->client->jsonRequest('PATCH', '/api/users/'.$demo->getId(), [
+            'password' => 'too-short',
+            'role' => 'ROLE_UNKNOWN',
+        ]);
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testModificationOfAnUnknownUserIsNotFound(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/users/999999', ['role' => 'ROLE_DEMO']);
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testDemoCannotModifyUsers(): void
+    {
+        $demo = $this->createUser('demo', ['ROLE_DEMO']);
+        $this->client->loginUser($demo);
+
+        $this->client->jsonRequest('PATCH', '/api/users/'.$demo->getId(), ['role' => 'ROLE_ADMIN']);
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
     /**
      * @param list<string> $roles
      */

@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Dto\UserCreationRequest;
+use App\Dto\UserModificationRequest;
 use App\Entity\User;
 use App\Repository\UserRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -12,6 +13,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 #[IsGranted('ROLE_USER_MANAGE')]
@@ -54,5 +56,35 @@ final class UserManagementController extends AbstractController
             'login' => $user->getLogin(),
             'roles' => $user->getRoles(),
         ], Response::HTTP_CREATED);
+    }
+
+    #[Route('/api/users/{id}', name: 'api_users_modify', requirements: ['id' => '\d+'], methods: ['PATCH'])]
+    public function modifyUser(
+        User $user,
+        #[MapRequestPayload] UserModificationRequest $userModificationRequest,
+        #[CurrentUser] User $authenticatedUser,
+        UserPasswordHasherInterface $passwordHasher,
+        EntityManagerInterface $entityManager,
+    ): JsonResponse {
+        $isChangingOwnRole = null !== $userModificationRequest->role && $user->getId() === $authenticatedUser->getId();
+        if ($isChangingOwnRole) {
+            return $this->json(['error' => 'You cannot change your own role.'], Response::HTTP_FORBIDDEN);
+        }
+
+        if (null !== $userModificationRequest->role) {
+            $user->setRoles([$userModificationRequest->role]);
+        }
+
+        if (null !== $userModificationRequest->password) {
+            $user->setPassword($passwordHasher->hashPassword($user, $userModificationRequest->password));
+        }
+
+        $entityManager->flush();
+
+        return $this->json([
+            'id' => $user->getId(),
+            'login' => $user->getLogin(),
+            'roles' => $user->getRoles(),
+        ]);
     }
 }
