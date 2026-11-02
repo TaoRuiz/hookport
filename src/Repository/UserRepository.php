@@ -19,6 +19,14 @@ class UserRepository extends ServiceEntityRepository implements PasswordUpgrader
         parent::__construct($registry, User::class);
     }
 
+    public function hasAnyUserWithRole(string $role): bool
+    {
+        return (bool) $this->getEntityManager()->getConnection()->fetchOne(
+            'SELECT EXISTS (SELECT 1 FROM "user" WHERE roles::jsonb @> to_jsonb(ARRAY[:role]::text[]))',
+            ['role' => $role],
+        );
+    }
+
     /**
      * Used to upgrade (rehash) the user's password automatically over time.
      */
