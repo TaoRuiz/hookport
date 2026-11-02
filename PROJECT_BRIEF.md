@@ -106,6 +106,8 @@ Simulated external systems, clearly labeled as simulated in the README:
 - Logistics: fails ~50% of the time (500 or timeout) to show retries
 - Team channel: always unreachable, to show `failed` + replay (replay flips it to working)
 
+Demo isolation (decided): the core app contains nothing demo-specific. Everything that exists only for the demo (demo targets, fake payment emitter, demo event generators) lives under the `App\Demo\` namespace, in one place. Running the demo targets as a separate Docker service of the same repo stays an option, decided with the demo targets theme.
+
 ## Test database (own branch)
 - `tests/bootstrap.php` recreates the test database and runs the migrations on every PHPUnit run: no manual command, schema always matches the migrations.
 - `dama/doctrine-test-bundle` wraps each test in a rolled-back transaction for isolation.
