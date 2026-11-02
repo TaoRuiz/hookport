@@ -3,6 +3,8 @@
 namespace App\Entity;
 
 use App\Repository\EventInRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -44,6 +46,12 @@ class EventIn
     private \DateTimeImmutable $receivedAt;
 
     /**
+     * @var Collection<int, Delivery>
+     */
+    #[ORM\OneToMany(targetEntity: Delivery::class, mappedBy: 'eventIn')]
+    private Collection $deliveries;
+
+    /**
      * @param array<mixed> $payload
      */
     public function __construct(Source $source, string $externalId, string $type, array $payload)
@@ -54,6 +62,7 @@ class EventIn
         $this->type = $type;
         $this->payload = $payload;
         $this->receivedAt = new \DateTimeImmutable();
+        $this->deliveries = new ArrayCollection();
     }
 
     public function getUuid(): Uuid
@@ -87,5 +96,13 @@ class EventIn
     public function getReceivedAt(): \DateTimeImmutable
     {
         return $this->receivedAt;
+    }
+
+    /**
+     * @return Collection<int, Delivery>
+     */
+    public function getDeliveries(): Collection
+    {
+        return $this->deliveries;
     }
 }
