@@ -11,6 +11,10 @@ security:
                 class: App\Entity\User
                 property: login
 
+    role_hierarchy:
+        ROLE_DEMO: []
+        ROLE_ADMIN: [ROLE_DEMO, ROLE_USER_MANAGE]
+
     firewalls:
         dev:
             # Ensure dev tools and static assets are always allowed
