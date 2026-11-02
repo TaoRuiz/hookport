@@ -197,6 +197,49 @@ final class UserManagementControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
+    public function testAdminDeletesAUser(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+        $demoId = $this->createUser('demo', ['ROLE_DEMO'])->getId();
+
+        $this->client->request('DELETE', '/api/users/'.$demoId);
+
+        self::assertResponseStatusCodeSame(204);
+        $this->entityManager->clear();
+        self::assertNull($this->entityManager->find(User::class, $demoId));
+    }
+
+    public function testAdminCannotDeleteOwnAccount(): void
+    {
+        $admin = $this->createUser('admin', ['ROLE_ADMIN']);
+        $this->client->loginUser($admin);
+
+        $this->client->request('DELETE', '/api/users/'.$admin->getId());
+
+        self::assertResponseStatusCodeSame(403);
+        $this->entityManager->clear();
+        self::assertNotNull($this->entityManager->find(User::class, $admin->getId()));
+    }
+
+    public function testDeletionOfAnUnknownUserIsNotFound(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->request('DELETE', '/api/users/999999');
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testDemoCannotDeleteUsers(): void
+    {
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+        $admin = $this->createUser('admin', ['ROLE_ADMIN']);
+
+        $this->client->request('DELETE', '/api/users/'.$admin->getId());
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
     /**
      * @param list<string> $roles
      */

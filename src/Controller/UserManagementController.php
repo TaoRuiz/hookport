@@ -87,4 +87,20 @@ final class UserManagementController extends AbstractController
             'roles' => $user->getRoles(),
         ]);
     }
+
+    #[Route('/api/users/{id}', name: 'api_users_delete', requirements: ['id' => '\d+'], methods: ['DELETE'])]
+    public function deleteUser(
+        User $user,
+        #[CurrentUser] User $authenticatedUser,
+        EntityManagerInterface $entityManager,
+    ): Response {
+        if ($user->getId() === $authenticatedUser->getId()) {
+            return $this->json(['error' => 'You cannot delete your own account.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $entityManager->remove($user);
+        $entityManager->flush();
+
+        return new Response(status: Response::HTTP_NO_CONTENT);
+    }
 }
