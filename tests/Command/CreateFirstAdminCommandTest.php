@@ -6,6 +6,7 @@ use App\Repository\UserRepository;
 use App\Tests\CreatesUsers;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
@@ -22,7 +23,7 @@ final class CreateFirstAdminCommandTest extends KernelTestCase
 
     public function testCreatesAnAdministratorWithTheTypedPassword(): void
     {
-        $this->commandTester->setInputs(['a-long-enough-password']);
+        $this->commandTester->setInputs(['a-long-enough-password', 'a-long-enough-password']);
 
         $this->commandTester->execute(['login' => 'admin']);
 
@@ -47,7 +48,7 @@ final class CreateFirstAdminCommandTest extends KernelTestCase
     public function testStillCreatesAnAdministratorWhenOnlyDemoUsersExist(): void
     {
         $this->createUser('demo', ['ROLE_DEMO']);
-        $this->commandTester->setInputs(['a-long-enough-password']);
+        $this->commandTester->setInputs(['a-long-enough-password', 'a-long-enough-password']);
 
         $this->commandTester->execute(['login' => 'admin']);
 
@@ -56,7 +57,7 @@ final class CreateFirstAdminCommandTest extends KernelTestCase
 
     public function testAsksAgainWhenThePasswordIsShorterThanTwelveCharacters(): void
     {
-        $this->commandTester->setInputs(['too-short', 'a-long-enough-password']);
+        $this->commandTester->setInputs(['too-short', 'a-long-enough-password', 'a-long-enough-password']);
 
         $this->commandTester->execute(['login' => 'admin']);
 
@@ -76,6 +77,17 @@ final class CreateFirstAdminCommandTest extends KernelTestCase
         } catch (\InvalidArgumentException) {
         }
 
+        self::assertNull(static::getContainer()->get(UserRepository::class)->findOneBy(['login' => 'admin']));
+    }
+
+    public function testCreatesNothingWhenTheConfirmationDoesNotMatch(): void
+    {
+        $this->commandTester->setInputs(['a-long-enough-password', 'a-different-password']);
+
+        $this->commandTester->execute(['login' => 'admin']);
+
+        self::assertSame(Command::FAILURE, $this->commandTester->getStatusCode());
+        self::assertStringContainsString('The two passwords do not match', $this->commandTester->getDisplay());
         self::assertNull(static::getContainer()->get(UserRepository::class)->findOneBy(['login' => 'admin']));
     }
 }

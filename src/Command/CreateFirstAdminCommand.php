@@ -39,6 +39,12 @@ final readonly class CreateFirstAdminCommand
             ->setValidator($this->validatePassword(...));
         $plainPassword = $io->askQuestion($passwordQuestion);
 
+        if ($io->askHidden('Confirm password') !== $plainPassword) {
+            $io->error('The two passwords do not match: nothing was created.');
+
+            return Command::FAILURE;
+        }
+
         $admin = new User($login);
         $admin->setRoles(['ROLE_ADMIN']);
         $admin->setPassword($this->passwordHasher->hashPassword($admin, $plainPassword));
