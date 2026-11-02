@@ -2,10 +2,15 @@
 
 namespace App\Controller;
 
+use App\Dto\UserCreationRequest;
 use App\Entity\User;
 use App\Repository\UserRepository;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
@@ -25,5 +30,29 @@ final class UserManagementController extends AbstractController
             ],
             $users,
         ));
+    }
+
+    #[Route('/api/users', name: 'api_users_create', methods: ['POST'])]
+    public function createUser(
+        #[MapRequestPayload] UserCreationRequest $userCreationRequest,
+        UserRepository $userRepository,
+        UserPasswordHasherInterface $passwordHasher,
+        EntityManagerInterface $entityManager,
+    ): JsonResponse {
+        if (null !== $userRepository->findOneBy(['login' => $userCreationRequest->login])) {
+            return $this->json(['error' => 'This login is already used.'], Response::HTTP_CONFLICT);
+        }
+
+        $user = new User($userCreationRequest->login);
+        $user->setRoles([$userCreationRequest->role]);
+        $user->setPassword($passwordHasher->hashPassword($user, $userCreationRequest->password));
+        $entityManager->persist($user);
+        $entityManager->flush();
+
+        return $this->json([
+            'id' => $user->getId(),
+            'login' => $user->getLogin(),
+            'roles' => $user->getRoles(),
+        ], Response::HTTP_CREATED);
     }
 }

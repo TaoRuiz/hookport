@@ -53,6 +53,74 @@ final class UserManagementControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(401);
     }
 
+    public function testAdminCreatesAUserWhoCanThenLogIn(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('POST', '/api/users', [
+            'login' => 'new-demo',
+            'password' => 'a-long-enough-password',
+            'role' => 'ROLE_DEMO',
+        ]);
+
+        self::assertResponseStatusCodeSame(201);
+        $createdUser = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame('new-demo', $createdUser['login']);
+        self::assertSame(['ROLE_DEMO', 'ROLE_USER'], $createdUser['roles']);
+
+        $this->client->request('POST', '/api/logout');
+        $this->client->jsonRequest('POST', '/api/login', [
+            'login' => 'new-demo',
+            'password' => 'a-long-enough-password',
+        ]);
+
+        self::assertResponseIsSuccessful();
+    }
+
+    public function testCreationWithAnAlreadyUsedLoginIsRefused(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('POST', '/api/users', [
+            'login' => 'admin',
+            'password' => 'a-long-enough-password',
+            'role' => 'ROLE_DEMO',
+        ]);
+
+        self::assertResponseStatusCodeSame(409);
+    }
+
+    public function testCreationWithInvalidFieldsIsRefused(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('POST', '/api/users', [
+            'login' => '',
+            'password' => 'too-short',
+            'role' => 'ROLE_UNKNOWN',
+        ]);
+
+        self::assertResponseStatusCodeSame(422);
+        $violatedFields = array_column(
+            json_decode($this->client->getResponse()->getContent(), true)['violations'],
+            'propertyPath',
+        );
+        self::assertSame(['login', 'password', 'role'], $violatedFields);
+    }
+
+    public function testDemoCannotCreateUsers(): void
+    {
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->jsonRequest('POST', '/api/users', [
+            'login' => 'intruder',
+            'password' => 'a-long-enough-password',
+            'role' => 'ROLE_ADMIN',
+        ]);
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
     /**
      * @param list<string> $roles
      */
