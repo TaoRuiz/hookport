@@ -23,6 +23,8 @@ security:
                 check_path: api_login
                 username_path: login
                 password_path: password
+            logout:
+                path: api_logout
 
     # Note: Only the *first* matching rule is applied
     access_control:
