@@ -53,4 +53,29 @@ final class CreateFirstAdminCommandTest extends KernelTestCase
 
         self::assertNotNull(static::getContainer()->get(UserRepository::class)->findOneBy(['login' => 'admin']));
     }
+
+    public function testAsksAgainWhenThePasswordIsShorterThanTwelveCharacters(): void
+    {
+        $this->commandTester->setInputs(['too-short', 'a-long-enough-password']);
+
+        $this->commandTester->execute(['login' => 'admin']);
+
+        $this->commandTester->assertCommandIsSuccessful();
+        self::assertStringContainsString('This value is too short', $this->commandTester->getDisplay());
+        $admin = static::getContainer()->get(UserRepository::class)->findOneBy(['login' => 'admin']);
+        self::assertTrue(static::getContainer()->get(UserPasswordHasherInterface::class)->isPasswordValid($admin, 'a-long-enough-password'));
+    }
+
+    public function testCreatesNothingAfterThreeTooShortPasswords(): void
+    {
+        $this->commandTester->setInputs(['too-short', 'still-short', 'short-again']);
+
+        try {
+            $this->commandTester->execute(['login' => 'admin']);
+            self::fail('The command should give up after three invalid passwords.');
+        } catch (\InvalidArgumentException) {
+        }
+
+        self::assertNull(static::getContainer()->get(UserRepository::class)->findOneBy(['login' => 'admin']));
+    }
 }

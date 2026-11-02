@@ -8,8 +8,11 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\Argument;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Question\Question;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 #[AsCommand(name: 'app:create-first-admin', description: 'Creates the first administrator account.')]
 final readonly class CreateFirstAdminCommand
@@ -18,6 +21,7 @@ final readonly class CreateFirstAdminCommand
         private UserRepository $userRepository,
         private UserPasswordHasherInterface $passwordHasher,
         private EntityManagerInterface $entityManager,
+        private ValidatorInterface $validator,
     ) {
     }
 
@@ -29,7 +33,11 @@ final readonly class CreateFirstAdminCommand
             return Command::SUCCESS;
         }
 
-        $plainPassword = $io->askHidden('Password');
+        $passwordQuestion = (new Question('Password (at least 12 characters)'))
+            ->setHidden(true)
+            ->setMaxAttempts(3)
+            ->setValidator($this->validatePassword(...));
+        $plainPassword = $io->askQuestion($passwordQuestion);
 
         $admin = new User($login);
         $admin->setRoles(['ROLE_ADMIN']);
@@ -40,5 +48,15 @@ final readonly class CreateFirstAdminCommand
         $io->success(sprintf('Administrator "%s" created.', $login));
 
         return Command::SUCCESS;
+    }
+
+    private function validatePassword(?string $plainPassword): string
+    {
+        $violations = $this->validator->validate($plainPassword, [new Assert\NotBlank(), new Assert\Length(min: 12)]);
+        if (\count($violations) > 0) {
+            throw new \InvalidArgumentException((string) $violations->get(0)->getMessage());
+        }
+
+        return $plainPassword;
     }
 }
