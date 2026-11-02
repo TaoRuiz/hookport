@@ -17,6 +17,13 @@ Portfolio project for product-developer roles with an interoperability flavor. P
 - Authentication (Symfony Security, two firewalls): (1) `POST /api/events` is stateless, with a custom authenticator that verifies `X-Source` + the HMAC `X-Signature` on the RAW body; (2) the dashboard API uses `json_login` with a session cookie. SPA and API are same-origin (Vite dev proxy in dev, reverse proxy in prod), so no CORS is needed.
 - PHPUnit for tests
 
+## Users and permissions (decided)
+- Dashboard auth routes: `POST /api/login` (json_login, body `{ "login", "password" }`), `POST /api/logout` (POST only, answers 204: a GET logout can be triggered by any cross-site link), `GET /api/me` (own profile). Every other `/api` route requires a session.
+- Session cookie keeps Symfony defaults: HttpOnly, SameSite=Lax, Secure auto; session id regenerated at login.
+- Permissions are plain Symfony roles in `role_hierarchy`, no voters, no permission table. Code checks action-named roles (e.g. `ROLE_USER_MANAGE`), never `ROLE_ADMIN` directly, so a future role is a config line, not a code change. Action roles are added with the feature that needs them.
+- Two roles: `ROLE_DEMO` (browse logs and configuration, replay, send a fake payment) and `ROLE_ADMIN` (inherits `ROLE_DEMO`, plus user and configuration management).
+- User rules: one role per user; login frozen after creation; password at least 12 characters; nobody can change their own role or delete their own account (avoids losing the last admin).
+
 ## Core concepts
 - **Source**: an emitter allowed to send events. Has a slug and a shared secret (used to verify incoming signatures).
 - **Target**: a destination. Has a protocol (enum, v1: `http`), a JSON `config` (v1: `{ "url": ... }`) and a secret (used to sign outgoing requests; stored readable, not hashed).
@@ -85,14 +92,24 @@ Indexes to plan: EventIn(received_at), Delivery(status, next_attempt_at).
 - Event detail: one row per delivery with colored status (green delivered, orange retrying, red failed), attempt count, next retry time. Replay button for unrouted events.
 - Delivery detail: attempt history (HTTP code, duration, error, response excerpt) and a Replay button.
 - Counters: events received, delivered, needing attention.
-- Admin screens: manage sources, targets, event types, mappings (simple CRUD; fixtures acceptable for the very first iterations).
+- Admin screens: manage sources, targets, event types, mappings and users (simple CRUD; fixtures acceptable for the very first iterations).
 - Demo mode: a dedicated demo account gives access to the dashboard, with a "Send a fake payment" button to play with.
+
+## First admin account (v1, own branch)
+- Console command `app:create-first-admin <login>`: asks the password with hidden input (or reads it from an env var in `.env.local` / the secrets vault for automated deploys; never in the committed `.env`).
+- If a `ROLE_ADMIN` user already exists, it says so and does nothing (safe to re-run on every deploy). No "super admin" role.
+- The demo account is then created by the admin through the user CRUD.
 
 ## Demo targets (inside the same project, under `/demo/...`)
 Simulated external systems, clearly labeled as simulated in the README:
 - Billing: always OK
 - Logistics: fails ~50% of the time (500 or timeout) to show retries
 - Team channel: always unreachable, to show `failed` + replay (replay flips it to working)
+
+## Test database (own branch)
+- `tests/bootstrap.php` recreates the test database and runs the migrations on every PHPUnit run: no manual command, schema always matches the migrations.
+- `dama/doctrine-test-bundle` wraps each test in a rolled-back transaction for isolation.
+- Each test creates the data it uses (explicit, no hidden shared dataset); fixtures are for dev data. Factor out the user creation duplicated across the current tests.
 
 ## Tests (must exist)
 - Invalid signature rejected
@@ -119,7 +136,7 @@ Multi-tenant, roles beyond a simple admin/demo split, payload transformation, AM
 - v1.1: scripts that generate events automatically to keep the demo lively; dead-letter view, alerts; purge of old events
 - v1.2: payload transformation/mapping
 - v1.3: AMQP transport (out), then MQTT
-- v2: multiple connectors and sources, optional e-invoicing mapping (Factur-X/UBL)
+- v2: multiple connectors and sources, optional e-invoicing mapping (Factur-X/UBL); setup screen to create the first admin when no user exists, protected by a one-time setup token shown in the logs or CLI
 
 ## README requirements
 - One-sentence pitch, live demo link, short architecture diagram
