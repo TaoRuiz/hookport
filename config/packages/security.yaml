@@ -23,6 +23,8 @@ security:
         event_ingestion:
             pattern: ^/api/events$
             stateless: true
+            custom_authenticators:
+                - App\Security\EventSourceSignatureAuthenticator
         main:
             lazy: true
             provider: app_user_provider
@@ -36,7 +38,7 @@ security:
     # Note: Only the *first* matching rule is applied
     access_control:
         - { path: ^/api/login$, roles: PUBLIC_ACCESS }
-        - { path: ^/api/events$, roles: PUBLIC_ACCESS }
+        - { path: ^/api/events$, roles: ROLE_EVENT_SOURCE }
         - { path: ^/api, roles: IS_AUTHENTICATED_FULLY }
 
 when@test:
