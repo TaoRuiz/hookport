@@ -67,7 +67,7 @@ Indexes to plan: EventIn(received_at), Delivery(status, next_attempt_at).
 
 ## Flow
 1. `POST /api/events` with headers `X-Source`, `X-Signature` (HMAC-SHA256 of the raw body with the source secret) and a JSON body `{ "type", "id", "payload" }`.
-2. Reject invalid signature (401) or malformed body (422).
+2. Reject invalid signature (401), disabled source (403), unparseable JSON (400) or a body with missing or invalid fields (422).
 3. Duplicate (source, id) already stored: return 200, do nothing.
 4. Store the event. Find matching mappings, create ONE Delivery per distinct target (if several mappings match the same target, deliver once), dispatch one Messenger message per delivery, answer `202` immediately.
 5. Unknown event type or no matching mapping: the event is still stored and answered with `202`; it has zero deliveries and shows as `unrouted` in the dashboard. Never answer 4xx for this (emitters like Stripe would retry forever).
