@@ -2,16 +2,17 @@
 
 namespace App\Tests\Security;
 
-use App\Entity\Source;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Tests\CreatesSources;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 final class EventSourceAuthenticationTest extends WebTestCase
 {
-    private const string SOURCE_SLUG = 'shop';
-    private const string SOURCE_SECRET = 'shop-shared-secret';
-    private const string RAW_BODY = '{"type":"payment.succeeded","id":"evt_1","payload":{}}';
+    use CreatesSources;
+
+    private const string SOURCE_SLUG = 'emitter-app';
+    private const string SOURCE_SECRET = 'emitter-shared-secret';
+    private const string RAW_BODY = '{"type":"record.created","id":"evt_1","payload":{}}';
 
     private KernelBrowser $client;
 
@@ -22,7 +23,7 @@ final class EventSourceAuthenticationTest extends WebTestCase
 
     public function testCorrectlySignedEventIsAcceptedWithoutSession(): void
     {
-        $this->createSource();
+        $this->createSource(self::SOURCE_SLUG, self::SOURCE_SECRET);
 
         $this->postEvent(self::SOURCE_SLUG, $this->sign(self::RAW_BODY, self::SOURCE_SECRET));
 
@@ -32,7 +33,7 @@ final class EventSourceAuthenticationTest extends WebTestCase
 
     public function testMissingSignatureIsRejected(): void
     {
-        $this->createSource();
+        $this->createSource(self::SOURCE_SLUG, self::SOURCE_SECRET);
 
         $this->postEvent(self::SOURCE_SLUG, signature: null);
 
@@ -48,7 +49,7 @@ final class EventSourceAuthenticationTest extends WebTestCase
 
     public function testInvalidSignatureIsRejected(): void
     {
-        $this->createSource();
+        $this->createSource(self::SOURCE_SLUG, self::SOURCE_SECRET);
 
         $this->postEvent(self::SOURCE_SLUG, $this->sign(self::RAW_BODY, 'wrong-secret'));
 
@@ -57,7 +58,7 @@ final class EventSourceAuthenticationTest extends WebTestCase
 
     public function testSignatureOfAnotherBodyIsRejected(): void
     {
-        $this->createSource();
+        $this->createSource(self::SOURCE_SLUG, self::SOURCE_SECRET);
 
         $this->postEvent(self::SOURCE_SLUG, $this->sign('{"tampered":true}', self::SOURCE_SECRET));
 
@@ -66,7 +67,7 @@ final class EventSourceAuthenticationTest extends WebTestCase
 
     public function testDisabledSourceIsForbidden(): void
     {
-        $this->createSource(isEnabled: false);
+        $this->createSource(self::SOURCE_SLUG, self::SOURCE_SECRET, isEnabled: false);
 
         $this->postEvent(self::SOURCE_SLUG, $this->sign(self::RAW_BODY, self::SOURCE_SECRET));
 
@@ -75,24 +76,11 @@ final class EventSourceAuthenticationTest extends WebTestCase
 
     public function testDisabledSourceWithInvalidSignatureIsUnauthorizedNotForbidden(): void
     {
-        $this->createSource(isEnabled: false);
+        $this->createSource(self::SOURCE_SLUG, self::SOURCE_SECRET, isEnabled: false);
 
         $this->postEvent(self::SOURCE_SLUG, $this->sign(self::RAW_BODY, 'wrong-secret'));
 
         self::assertResponseStatusCodeSame(401);
-    }
-
-    private function createSource(bool $isEnabled = true): void
-    {
-        $source = new Source()
-            ->setSlug(self::SOURCE_SLUG)
-            ->setName('Shop')
-            ->setSecret(self::SOURCE_SECRET)
-            ->setEnabled($isEnabled);
-
-        $entityManager = static::getContainer()->get(EntityManagerInterface::class);
-        $entityManager->persist($source);
-        $entityManager->flush();
     }
 
     private function sign(string $rawBody, string $secret): string
