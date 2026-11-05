@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import {
   fetchAuthenticatedUser,
   logIn as requestLogIn,
+  logOut as requestLogOut,
   type AuthenticatedUser,
 } from '@/api/authenticationApi'
 
@@ -15,6 +16,11 @@ export const useAuthenticatedUserStore = defineStore('authenticatedUser', () => 
     hasCheckedSession.value = true
   }
 
+  async function logOut(): Promise<void> {
+    await requestLogOut()
+    authenticatedUser.value = null
+  }
+
   async function restoreSessionOnce(): Promise<void> {
     if (hasCheckedSession.value) {
       return
@@ -24,5 +30,5 @@ export const useAuthenticatedUserStore = defineStore('authenticatedUser', () => 
     hasCheckedSession.value = true
   }
 
-  return { authenticatedUser, hasCheckedSession, logIn, restoreSessionOnce }
+  return { authenticatedUser, hasCheckedSession, logIn, logOut, restoreSessionOnce }
 })

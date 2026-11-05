@@ -40,3 +40,11 @@ export async function fetchAuthenticatedUser(): Promise<AuthenticatedUser | null
 
   return (await response.json()) as AuthenticatedUser
 }
+
+export async function logOut(): Promise<void> {
+  const response = await fetch('/api/logout', { method: 'POST' })
+
+  if (!response.ok) {
+    throw new Error(`Logout failed with HTTP ${response.status}.`)
+  }
+}
