@@ -1,11 +1,24 @@
-<script setup lang="ts"></script>
+<script setup lang="ts">
+import { useRouter } from 'vue-router'
+import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
+
+const authenticatedUserStore = useAuthenticatedUserStore()
+const router = useRouter()
+
+async function logOutAndGoToLogin(): Promise<void> {
+  await authenticatedUserStore.logOut()
+  await router.push({ name: 'login' })
+}
+</script>
 
 <template>
   <v-app>
+    <v-app-bar v-if="authenticatedUserStore.authenticatedUser" title="HookPort">
+      <span class="mr-4">{{ authenticatedUserStore.authenticatedUser.login }}</span>
+      <v-btn prepend-icon="mdi-logout" @click="logOutAndGoToLogin">Sign out</v-btn>
+    </v-app-bar>
     <v-main>
-      <v-container>
-        <h1 class="text-h4">HookPort</h1>
-      </v-container>
+      <router-view />
     </v-main>
   </v-app>
 </template>
