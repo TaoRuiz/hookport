@@ -26,3 +26,17 @@ export async function logIn(login: string, password: string): Promise<Authentica
 
   return (await response.json()) as AuthenticatedUser
 }
+
+export async function fetchAuthenticatedUser(): Promise<AuthenticatedUser | null> {
+  const response = await fetch('/api/me')
+
+  if (response.status === 401) {
+    return null
+  }
+
+  if (!response.ok) {
+    throw new Error(`Session check failed with HTTP ${response.status}.`)
+  }
+
+  return (await response.json()) as AuthenticatedUser
+}

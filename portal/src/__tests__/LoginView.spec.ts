@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { createMemoryHistory, createRouter, type Router } from 'vue-router'
+import { createMemoryHistory, type Router } from 'vue-router'
 import { createVuetify } from 'vuetify'
-import { routes } from '@/router'
+import { createAppRouter } from '@/router'
 import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 import LoginView from '@/views/LoginView.vue'
 
-function respondToLoginWith(status: number, body: unknown): void {
+function stubFetchResponse(status: number, body: unknown): void {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status })))
 }
 
@@ -28,7 +28,8 @@ describe('LoginView', () => {
 
   beforeEach(async () => {
     setActivePinia(createPinia())
-    router = createRouter({ history: createMemoryHistory(), routes })
+    stubFetchResponse(401, { error: 'Not authenticated.' })
+    router = createAppRouter(createMemoryHistory())
     await router.push({ name: 'login' })
   })
 
@@ -37,7 +38,7 @@ describe('LoginView', () => {
   })
 
   it('sends the credentials as JSON to the login endpoint', async () => {
-    respondToLoginWith(200, { login: 'admin', roles: ['ROLE_ADMIN'] })
+    stubFetchResponse(200, { login: 'admin', roles: ['ROLE_ADMIN'] })
 
     await submitLoginForm(router, 'admin', 'correct-password')
 
@@ -49,7 +50,7 @@ describe('LoginView', () => {
   })
 
   it('remembers the user and goes to the home page after a successful login', async () => {
-    respondToLoginWith(200, { login: 'admin', roles: ['ROLE_ADMIN'] })
+    stubFetchResponse(200, { login: 'admin', roles: ['ROLE_ADMIN'] })
 
     await submitLoginForm(router, 'admin', 'correct-password')
 
@@ -58,7 +59,7 @@ describe('LoginView', () => {
   })
 
   it('shows an error and stays on the login page when credentials are rejected', async () => {
-    respondToLoginWith(401, { error: 'Invalid credentials.' })
+    stubFetchResponse(401, { error: 'Invalid credentials.' })
 
     const wrapper = await submitLoginForm(router, 'admin', 'wrong-password')
 
@@ -68,7 +69,7 @@ describe('LoginView', () => {
   })
 
   it('shows a generic error when the server fails', async () => {
-    respondToLoginWith(500, {})
+    stubFetchResponse(500, {})
 
     const wrapper = await submitLoginForm(router, 'admin', 'correct-password')
 
