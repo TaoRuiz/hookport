@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { listSources, type Source } from '@/api/sourcesApi'
+import { listSources, type CreatedSource, type Source } from '@/api/sourcesApi'
+import SourceCreationDialog from '@/components/SourceCreationDialog.vue'
+import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
+
+const authenticatedUserStore = useAuthenticatedUserStore()
 
 const sources = ref<Source[]>([])
 const isShowingDisabledSources = ref(false)
@@ -10,6 +14,18 @@ const loadingErrorMessage = ref<string | null>(null)
 const visibleSources = computed(() =>
   isShowingDisabledSources.value ? sources.value : sources.value.filter((source) => source.enabled),
 )
+
+function addCreatedSourceToList(createdSource: CreatedSource): void {
+  const source: Source = {
+    id: createdSource.id,
+    slug: createdSource.slug,
+    name: createdSource.name,
+    enabled: createdSource.enabled,
+  }
+  sources.value = [...sources.value, source].sort((first, second) =>
+    first.name.localeCompare(second.name),
+  )
+}
 
 onMounted(async () => {
   try {
@@ -24,7 +40,14 @@ onMounted(async () => {
 
 <template>
   <v-container>
-    <h1 class="text-h4 mb-4">Sources</h1>
+    <div class="d-flex align-center mb-4">
+      <h1 class="text-h4">Sources</h1>
+      <v-spacer />
+      <SourceCreationDialog
+        v-if="authenticatedUserStore.canManageConfiguration"
+        @created="addCreatedSourceToList"
+      />
+    </div>
 
     <v-switch
       v-model="isShowingDisabledSources"
