@@ -147,4 +147,37 @@ final class SourceManagementControllerTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(422);
     }
+
+    public function testAdminCanShowTheSecretOfASource(): void
+    {
+        $source = $this->createSource('emitter-app', 'emitter-shared-secret');
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->request('GET', '/api/sources/'.$source->getId().'/secret');
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(
+            ['secret' => 'emitter-shared-secret'],
+            json_decode($this->client->getResponse()->getContent(), true),
+        );
+    }
+
+    public function testDemoCannotShowTheSecretOfASource(): void
+    {
+        $source = $this->createSource('emitter-app', 'emitter-shared-secret');
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/sources/'.$source->getId().'/secret');
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testSecretOfAnUnknownSourceIsNotFound(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->request('GET', '/api/sources/999999/secret');
+
+        self::assertResponseStatusCodeSame(404);
+    }
 }

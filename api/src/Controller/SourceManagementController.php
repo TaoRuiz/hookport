@@ -57,4 +57,11 @@ final class SourceManagementController extends AbstractController
             'secret' => $source->getSecret(),
         ], Response::HTTP_CREATED);
     }
+
+    #[Route('/api/sources/{id}/secret', name: 'api_sources_show_secret', requirements: ['id' => '\d+'], methods: ['GET'])]
+    #[IsGranted('ROLE_CONFIGURATION_MANAGE')]
+    public function showSourceSecret(Source $source): JsonResponse
+    {
+        return $this->json(['secret' => $source->getSecret()]);
+    }
 }
