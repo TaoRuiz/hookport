@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Dto\SourceCreationRequest;
+use App\Dto\SourceModificationRequest;
 use App\Entity\Source;
 use App\Repository\SourceRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -42,8 +43,7 @@ final class SourceManagementController extends AbstractController
             return $this->json(['error' => 'This slug is already used.'], Response::HTTP_CONFLICT);
         }
 
-        $source = new Source()
-            ->setSlug($sourceCreationRequest->slug)
+        $source = new Source($sourceCreationRequest->slug)
             ->setName($sourceCreationRequest->name)
             ->setSecret(bin2hex(random_bytes(32)));
         $entityManager->persist($source);
@@ -63,5 +63,30 @@ final class SourceManagementController extends AbstractController
     public function showSourceSecret(Source $source): JsonResponse
     {
         return $this->json(['secret' => $source->getSecret()]);
+    }
+
+    #[Route('/api/sources/{id}', name: 'api_sources_modify', requirements: ['id' => '\d+'], methods: ['PATCH'])]
+    #[IsGranted('ROLE_CONFIGURATION_MANAGE')]
+    public function modifySource(
+        Source $source,
+        #[MapRequestPayload] SourceModificationRequest $sourceModificationRequest,
+        EntityManagerInterface $entityManager,
+    ): JsonResponse {
+        if (null !== $sourceModificationRequest->name) {
+            $source->setName($sourceModificationRequest->name);
+        }
+
+        if (null !== $sourceModificationRequest->enabled) {
+            $source->setEnabled($sourceModificationRequest->enabled);
+        }
+
+        $entityManager->flush();
+
+        return $this->json([
+            'id' => $source->getId(),
+            'slug' => $source->getSlug(),
+            'name' => $source->getName(),
+            'enabled' => $source->isEnabled(),
+        ]);
     }
 }

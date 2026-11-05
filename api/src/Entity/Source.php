@@ -7,6 +7,7 @@ use Doctrine\ORM\Mapping as ORM;
 
 /**
  * An emitter allowed to send events. Incoming requests are signed with its secret.
+ * The slug is frozen at creation: emitters send it in X-Source.
  */
 #[ORM\Entity(repositoryClass: SourceRepository::class)]
 class Source
@@ -15,9 +16,6 @@ class Source
     #[ORM\GeneratedValue]
     #[ORM\Column]
     private ?int $id = null;
-
-    #[ORM\Column(length: 100, unique: true)]
-    private ?string $slug = null;
 
     #[ORM\Column(length: 255)]
     private ?string $name = null;
@@ -28,21 +26,20 @@ class Source
     #[ORM\Column(options: ['default' => true])]
     private bool $enabled = true;
 
+    public function __construct(
+        #[ORM\Column(length: 100, unique: true)]
+        private string $slug,
+    ) {
+    }
+
     public function getId(): ?int
     {
         return $this->id;
     }
 
-    public function getSlug(): ?string
+    public function getSlug(): string
     {
         return $this->slug;
-    }
-
-    public function setSlug(string $slug): static
-    {
-        $this->slug = $slug;
-
-        return $this;
     }
 
     public function getName(): ?string

@@ -180,4 +180,89 @@ final class SourceManagementControllerTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(404);
     }
+
+    public function testAdminRenamesASource(): void
+    {
+        $source = $this->createSource('emitter-app', 'emitter-shared-secret');
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/sources/'.$source->getId(), ['name' => 'Renamed app']);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(
+            ['id' => $source->getId(), 'slug' => 'emitter-app', 'name' => 'Renamed app', 'enabled' => true],
+            json_decode($this->client->getResponse()->getContent(), true),
+        );
+    }
+
+    public function testAdminDisablesASourceWhoseEventsAreThenForbidden(): void
+    {
+        $source = $this->createSource('emitter-app', 'emitter-shared-secret');
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/sources/'.$source->getId(), ['enabled' => false]);
+
+        self::assertResponseIsSuccessful();
+        self::assertFalse(json_decode($this->client->getResponse()->getContent(), true)['enabled']);
+
+        $rawBody = '{"type":"record.created","id":"evt_1","payload":{}}';
+        $this->client->request('POST', '/api/events', server: [
+            'HTTP_X_SOURCE' => 'emitter-app',
+            'HTTP_X_SIGNATURE' => hash_hmac('sha256', $rawBody, 'emitter-shared-secret'),
+            'CONTENT_TYPE' => 'application/json',
+        ], content: $rawBody);
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testAdminReenablesADisabledSource(): void
+    {
+        $source = $this->createSource('emitter-app', 'emitter-shared-secret', isEnabled: false);
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/sources/'.$source->getId(), ['enabled' => true]);
+
+        self::assertTrue(json_decode($this->client->getResponse()->getContent(), true)['enabled']);
+    }
+
+    public function testFieldsNotSentAreLeftUnchanged(): void
+    {
+        $source = $this->createSource('emitter-app', 'emitter-shared-secret', isEnabled: false);
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/sources/'.$source->getId(), ['name' => 'Renamed app']);
+
+        self::assertFalse(json_decode($this->client->getResponse()->getContent(), true)['enabled']);
+    }
+
+    public function testSlugCannotBeChanged(): void
+    {
+        $source = $this->createSource('emitter-app', 'emitter-shared-secret');
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/sources/'.$source->getId(), ['slug' => 'other-slug']);
+
+        self::assertSame('emitter-app', json_decode($this->client->getResponse()->getContent(), true)['slug']);
+    }
+
+    public function testBlankNameIsRejected(): void
+    {
+        $source = $this->createSource('emitter-app', 'emitter-shared-secret');
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/sources/'.$source->getId(), ['name' => '']);
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testDemoCannotModifyASource(): void
+    {
+        $source = $this->createSource('emitter-app', 'emitter-shared-secret');
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->jsonRequest('PATCH', '/api/sources/'.$source->getId(), ['enabled' => false]);
+
+        self::assertResponseStatusCodeSame(403);
+        self::assertTrue(static::getContainer()->get(SourceRepository::class)->find($source->getId())->isEnabled());
+    }
 }
