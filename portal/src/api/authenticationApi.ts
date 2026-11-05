@@ -1,0 +1,28 @@
+export interface AuthenticatedUser {
+  login: string
+  roles: string[]
+}
+
+export class InvalidCredentialsError extends Error {
+  constructor() {
+    super('Invalid login or password.')
+  }
+}
+
+export async function logIn(login: string, password: string): Promise<AuthenticatedUser> {
+  const response = await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ login, password }),
+  })
+
+  if (response.status === 401) {
+    throw new InvalidCredentialsError()
+  }
+
+  if (!response.ok) {
+    throw new Error(`Login failed with HTTP ${response.status}.`)
+  }
+
+  return (await response.json()) as AuthenticatedUser
+}
