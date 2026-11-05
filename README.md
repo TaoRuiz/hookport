@@ -1,3 +1,3 @@
 # hookport
 
-Create the first administrator: `php bin/console app:create-first-admin <login>`
+Create the first administrator, from `api/`: `php bin/console app:create-first-admin <login>`

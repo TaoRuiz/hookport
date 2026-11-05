@@ -1,3 +1,3 @@
-@AGENTS.md
+@api/AGENTS.md
 @PROJECT_BRIEF.md
 
