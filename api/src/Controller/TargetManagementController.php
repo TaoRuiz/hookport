@@ -54,4 +54,11 @@ final class TargetManagementController extends AbstractController
             'secret' => $target->getSecret(),
         ], Response::HTTP_CREATED);
     }
+
+    #[Route('/api/targets/{id}/secret', name: 'api_targets_show_secret', requirements: ['id' => '\d+'], methods: ['GET'])]
+    #[IsGranted('ROLE_CONFIGURATION_MANAGE')]
+    public function showTargetSecret(Target $target): JsonResponse
+    {
+        return $this->json(['secret' => $target->getSecret()]);
+    }
 }

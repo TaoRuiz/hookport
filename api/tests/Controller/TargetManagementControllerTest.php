@@ -130,4 +130,37 @@ final class TargetManagementControllerTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(422);
     }
+
+    public function testAdminCanShowTheSecretOfATarget(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example/hook', 'receiver-shared-secret');
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->request('GET', '/api/targets/'.$target->getId().'/secret');
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(
+            ['secret' => 'receiver-shared-secret'],
+            json_decode($this->client->getResponse()->getContent(), true),
+        );
+    }
+
+    public function testDemoCannotShowTheSecretOfATarget(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example/hook', 'receiver-shared-secret');
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/targets/'.$target->getId().'/secret');
+
+        self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testSecretOfAnUnknownTargetIsNotFound(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->request('GET', '/api/targets/999999/secret');
+
+        self::assertResponseStatusCodeSame(404);
+    }
 }
