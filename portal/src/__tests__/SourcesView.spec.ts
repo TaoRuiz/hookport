@@ -162,4 +162,66 @@ describe('SourcesView', () => {
     expect(page.text()).toContain('This slug is already used.')
     expect(page.text()).not.toContain('Source emitter-app created')
   })
+
+  it('hides status and secret actions from a user who cannot manage configuration', async () => {
+    stubFetchResponses(jsonResponse(200, [enabledSource]))
+
+    const wrapper = await mountSourcesView()
+
+    expect(wrapper.find('tbody').text()).not.toContain('Show secret')
+    expect(wrapper.find('tbody input[type="checkbox"]').exists()).toBe(false)
+  })
+
+  it('disables a source from its row', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(
+      jsonResponse(200, [enabledSource]),
+      jsonResponse(200, { ...enabledSource, enabled: false }),
+    )
+    const wrapper = await mountSourcesView()
+    await wrapper.find('input[aria-label="Show disabled sources"]').setValue(true)
+
+    await wrapper.find('tbody input[type="checkbox"]').setValue(false)
+    await flushPromises()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/sources/1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    })
+    expect(wrapper.find('tbody').text()).toContain('Disabled')
+  })
+
+  it('keeps the source status and explains when the status change fails', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, [enabledSource]), jsonResponse(500, {}))
+    const wrapper = await mountSourcesView()
+
+    await wrapper.find('tbody input[type="checkbox"]').setValue(false)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unable to change the status of emitter-app')
+    expect(wrapper.find('tbody').text()).toContain('Enabled')
+  })
+
+  it('shows the secret of a source on demand', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(
+      jsonResponse(200, [enabledSource]),
+      jsonResponse(200, { secret: generatedSecret }),
+    )
+    const wrapper = await mountSourcesView()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Show secret')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/sources/1/secret')
+    expect(page.text()).toContain('Secret of emitter-app')
+    expect(page.find<HTMLInputElement>('.v-dialog input[readonly]').element.value).toBe(
+      generatedSecret,
+    )
+  })
 })

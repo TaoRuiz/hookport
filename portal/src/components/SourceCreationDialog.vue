@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { createSource, SlugAlreadyUsedError, type CreatedSource } from '@/api/sourcesApi'
+import SecretField from '@/components/SecretField.vue'
 
 const emit = defineEmits<{ created: [source: CreatedSource] }>()
 
@@ -11,7 +12,6 @@ const isFormValid = ref(false)
 const isSubmitting = ref(false)
 const errorMessage = ref<string | null>(null)
 const createdSource = ref<CreatedSource | null>(null)
-const hasCopiedSecret = ref(false)
 
 const slugRules = [
   (value: string) => value.length > 0 || 'Slug is required.',
@@ -30,7 +30,6 @@ function openEmptyForm(): void {
   name.value = ''
   errorMessage.value = null
   createdSource.value = null
-  hasCopiedSecret.value = false
   isOpen.value = true
 }
 
@@ -54,11 +53,6 @@ async function submitSourceCreation(): Promise<void> {
     isSubmitting.value = false
   }
 }
-
-async function copySecretToClipboard(secret: string): Promise<void> {
-  await navigator.clipboard.writeText(secret)
-  hasCopiedSecret.value = true
-}
 </script>
 
 <template>
@@ -70,15 +64,7 @@ async function copySecretToClipboard(secret: string): Promise<void> {
         <p class="mb-4">
           Give this secret to the emitting application. It signs every event it sends with it.
         </p>
-        <v-text-field
-          :model-value="createdSource.secret"
-          label="Secret"
-          readonly
-          append-inner-icon="mdi-content-copy"
-          :hint="hasCopiedSecret ? 'Copied to clipboard.' : ''"
-          persistent-hint
-          @click:append-inner="copySecretToClipboard(createdSource.secret)"
-        />
+        <SecretField :secret="createdSource.secret" />
       </v-card-text>
       <v-card-actions>
         <v-spacer />

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { listSources, type CreatedSource, type Source } from '@/api/sourcesApi'
+import { changeSourceEnabled, listSources, type CreatedSource, type Source } from '@/api/sourcesApi'
 import SourceCreationDialog from '@/components/SourceCreationDialog.vue'
+import SourceSecretDialog from '@/components/SourceSecretDialog.vue'
 import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 
 const authenticatedUserStore = useAuthenticatedUserStore()
@@ -10,6 +11,7 @@ const sources = ref<Source[]>([])
 const isShowingDisabledSources = ref(false)
 const isLoading = ref(true)
 const loadingErrorMessage = ref<string | null>(null)
+const statusChangeErrorMessage = ref<string | null>(null)
 
 const visibleSources = computed(() =>
   isShowingDisabledSources.value ? sources.value : sources.value.filter((source) => source.enabled),
@@ -25,6 +27,19 @@ function addCreatedSourceToList(createdSource: CreatedSource): void {
   sources.value = [...sources.value, source].sort((first, second) =>
     first.name.localeCompare(second.name),
   )
+}
+
+async function switchSourceEnabled(source: Source, enabled: boolean): Promise<void> {
+  statusChangeErrorMessage.value = null
+
+  try {
+    const changedSource = await changeSourceEnabled(source.id, enabled)
+    sources.value = sources.value.map((listedSource) =>
+      listedSource.id === changedSource.id ? changedSource : listedSource,
+    )
+  } catch {
+    statusChangeErrorMessage.value = `Unable to change the status of ${source.slug}, please try again later.`
+  }
 }
 
 onMounted(async () => {
@@ -56,6 +71,15 @@ onMounted(async () => {
       hide-details
     />
 
+    <v-alert
+      v-if="statusChangeErrorMessage"
+      type="error"
+      class="mb-4"
+      closable
+      :text="statusChangeErrorMessage"
+      @click:close="statusChangeErrorMessage = null"
+    />
+
     <v-alert v-if="loadingErrorMessage" type="error" :text="loadingErrorMessage" />
     <v-progress-linear v-else-if="isLoading" indeterminate />
     <p v-else-if="visibleSources.length === 0" class="text-medium-emphasis">No source to show.</p>
@@ -66,6 +90,7 @@ onMounted(async () => {
           <th>Name</th>
           <th>Slug</th>
           <th>Status</th>
+          <th v-if="authenticatedUserStore.canManageConfiguration">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -78,6 +103,19 @@ onMounted(async () => {
             <v-chip :color="source.enabled ? 'success' : 'grey'" size="small">
               {{ source.enabled ? 'Enabled' : 'Disabled' }}
             </v-chip>
+          </td>
+          <td v-if="authenticatedUserStore.canManageConfiguration">
+            <div class="d-flex align-center ga-2">
+              <v-switch
+                :model-value="source.enabled"
+                :aria-label="`Enable ${source.slug}`"
+                color="success"
+                density="compact"
+                hide-details
+                @update:model-value="switchSourceEnabled(source, Boolean($event))"
+              />
+              <SourceSecretDialog :source="source" />
+            </div>
           </td>
         </tr>
       </tbody>
