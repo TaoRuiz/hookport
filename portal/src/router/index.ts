@@ -3,6 +3,7 @@ import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 import HomeView from '@/views/HomeView.vue'
 import LoginView from '@/views/LoginView.vue'
 import SourcesView from '@/views/SourcesView.vue'
+import TargetsView from '@/views/TargetsView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -17,6 +18,7 @@ export function createAppRouter(history: RouterHistory) {
       { path: '/', name: 'home', component: HomeView },
       { path: '/login', name: 'login', component: LoginView, meta: { isPublic: true } },
       { path: '/sources', name: 'sources', component: SourcesView },
+      { path: '/targets', name: 'targets', component: TargetsView },
     ],
   })
 
