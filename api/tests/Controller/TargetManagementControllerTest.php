@@ -2,8 +2,10 @@
 
 namespace App\Tests\Controller;
 
+use App\Repository\TargetRepository;
 use App\Tests\CreatesTargets;
 use App\Tests\CreatesUsers;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
@@ -64,5 +66,68 @@ final class TargetManagementControllerTest extends WebTestCase
         $this->client->request('GET', '/api/targets');
 
         self::assertResponseStatusCodeSame(401);
+    }
+
+    public function testAdminCreatesAnEnabledHttpTargetWithAGeneratedSecret(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('POST', '/api/targets', ['name' => 'Receiver', 'url' => 'https://receiver.example/hook']);
+
+        self::assertResponseStatusCodeSame(201);
+        $createdTarget = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame('Receiver', $createdTarget['name']);
+        self::assertSame('http', $createdTarget['protocol']);
+        self::assertSame(['url' => 'https://receiver.example/hook'], $createdTarget['config']);
+        self::assertTrue($createdTarget['enabled']);
+        self::assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $createdTarget['secret']);
+
+        $storedTarget = static::getContainer()->get(TargetRepository::class)->find($createdTarget['id']);
+        self::assertSame($createdTarget['secret'], $storedTarget->getSecret());
+    }
+
+    public function testTargetOnAnInternalHostWithoutTopLevelDomainIsAccepted(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('POST', '/api/targets', ['name' => 'Local receiver', 'url' => 'http://localhost:8000/hook']);
+
+        self::assertResponseStatusCodeSame(201);
+    }
+
+    public function testDemoCannotCreateATarget(): void
+    {
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->jsonRequest('POST', '/api/targets', ['name' => 'Receiver', 'url' => 'https://receiver.example/hook']);
+
+        self::assertResponseStatusCodeSame(403);
+        self::assertCount(0, static::getContainer()->get(TargetRepository::class)->findAll());
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function invalidTargetCreationBodies(): iterable
+    {
+        yield 'missing name' => [['url' => 'https://receiver.example/hook']];
+        yield 'blank name' => [['name' => '', 'url' => 'https://receiver.example/hook']];
+        yield 'missing url' => [['name' => 'Receiver']];
+        yield 'blank url' => [['name' => 'Receiver', 'url' => '']];
+        yield 'url without scheme' => [['name' => 'Receiver', 'url' => 'receiver.example/hook']];
+        yield 'url with non http scheme' => [['name' => 'Receiver', 'url' => 'ftp://receiver.example/hook']];
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    #[DataProvider('invalidTargetCreationBodies')]
+    public function testInvalidTargetCreationBodyIsRejected(array $body): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('POST', '/api/targets', $body);
+
+        self::assertResponseStatusCodeSame(422);
     }
 }
