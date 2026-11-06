@@ -57,3 +57,17 @@ export async function fetchTargetSecret(targetId: number): Promise<string> {
 
   return ((await response.json()) as { secret: string }).secret
 }
+
+export async function modifyTarget(targetId: number, name: string, url: string): Promise<Target> {
+  const response = await fetch(`/api/targets/${targetId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, url }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Modifying the target failed with HTTP ${response.status}.`)
+  }
+
+  return (await response.json()) as Target
+}

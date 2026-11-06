@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { changeTargetEnabled, listTargets, type CreatedTarget, type Target } from '@/api/targetsApi'
 import TargetCreationDialog from '@/components/TargetCreationDialog.vue'
+import TargetEditDialog from '@/components/TargetEditDialog.vue'
 import TargetSecretDialog from '@/components/TargetSecretDialog.vue'
 import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 
@@ -120,6 +121,7 @@ onMounted(async () => {
                 hide-details
                 @update:model-value="switchTargetEnabled(target, Boolean($event))"
               />
+              <TargetEditDialog :target="target" @modified="replaceTargetInList" />
               <TargetSecretDialog :target="target" />
             </div>
           </td>

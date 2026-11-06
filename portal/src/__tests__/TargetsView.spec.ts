@@ -235,4 +235,57 @@ describe('TargetsView', () => {
       generatedSecret,
     )
   })
+
+  it('edits the name and URL of a target from its row and keeps the list sorted by name', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    const otherTarget = { ...enabledTarget, id: 3, name: 'Other receiver' }
+    const modifiedTarget = {
+      ...enabledTarget,
+      name: 'Zulu receiver',
+      config: { url: 'https://zulu.example/hook' },
+    }
+    stubFetchResponses(
+      jsonResponse(200, [enabledTarget, otherTarget]),
+      jsonResponse(200, modifiedTarget),
+    )
+    const wrapper = await mountTargetsView()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Edit')!
+      .trigger('click')
+    await flushPromises()
+    const [nameInput, urlInput] = page.findAll('.v-dialog form input')
+    await nameInput!.setValue('Zulu receiver')
+    await urlInput!.setValue('https://zulu.example/hook')
+    await flushPromises()
+    await page.find('.v-dialog form').trigger('submit')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/targets/1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Zulu receiver', url: 'https://zulu.example/hook' }),
+    })
+    const rowNames = wrapper.findAll('tbody tr').map((row) => row.find('td').text())
+    expect(rowNames).toEqual(['Other receiver', 'Zulu receiver'])
+    expect(wrapper.find('tbody').text()).toContain('https://zulu.example/hook')
+  })
+
+  it('keeps the dialog open and explains when the modification fails', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, [enabledTarget]), jsonResponse(500, {}))
+    const wrapper = await mountTargetsView()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Edit')!
+      .trigger('click')
+    await flushPromises()
+    await page.find('.v-dialog form').trigger('submit')
+    await flushPromises()
+
+    expect(page.text()).toContain('Unable to modify the target')
+    expect(wrapper.find('tbody').text()).toContain('https://receiver.example/hook')
+  })
 })
