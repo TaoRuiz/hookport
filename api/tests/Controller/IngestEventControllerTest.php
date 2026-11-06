@@ -2,6 +2,7 @@
 
 namespace App\Tests\Controller;
 
+use App\Repository\EventInRepository;
 use App\Tests\CreatesSources;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -27,6 +28,17 @@ final class IngestEventControllerTest extends WebTestCase
         $this->postSignedEvent('{"type":"record.created","id":"evt_1","payload":{"field":"value"}}');
 
         self::assertResponseStatusCodeSame(202);
+    }
+
+    public function testAcceptedEventIsStored(): void
+    {
+        $this->postSignedEvent('{"type":"record.created","id":"evt_1","payload":{"field":"value"}}');
+
+        $storedEvent = static::getContainer()->get(EventInRepository::class)->findOneBy(['externalId' => 'evt_1']);
+        self::assertNotNull($storedEvent);
+        self::assertSame(self::SOURCE_SLUG, $storedEvent->getSource()->getSlug());
+        self::assertSame('record.created', $storedEvent->getType());
+        self::assertSame(['field' => 'value'], $storedEvent->getPayload());
     }
 
     public function testEventWithEmptyPayloadIsAccepted(): void
