@@ -173,4 +173,66 @@ describe('TargetsView', () => {
     expect(page.text()).toContain('Unable to create the target')
     expect(page.text()).not.toContain('Target Receiver created')
   })
+
+  it('hides status and secret actions from a user who cannot manage configuration', async () => {
+    stubFetchResponses(jsonResponse(200, [enabledTarget]))
+
+    const wrapper = await mountTargetsView()
+
+    expect(wrapper.find('tbody').text()).not.toContain('Show secret')
+    expect(wrapper.find('tbody input[type="checkbox"]').exists()).toBe(false)
+  })
+
+  it('disables a target from its row', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(
+      jsonResponse(200, [enabledTarget]),
+      jsonResponse(200, { ...enabledTarget, enabled: false }),
+    )
+    const wrapper = await mountTargetsView()
+    await wrapper.find('input[aria-label="Show disabled targets"]').setValue(true)
+
+    await wrapper.find('tbody input[type="checkbox"]').setValue(false)
+    await flushPromises()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/targets/1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    })
+    expect(wrapper.find('tbody').text()).toContain('Disabled')
+  })
+
+  it('keeps the target status and explains when the status change fails', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, [enabledTarget]), jsonResponse(500, {}))
+    const wrapper = await mountTargetsView()
+
+    await wrapper.find('tbody input[type="checkbox"]').setValue(false)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unable to change the status of Receiver')
+    expect(wrapper.find('tbody').text()).toContain('Enabled')
+  })
+
+  it('shows the secret of a target on demand', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(
+      jsonResponse(200, [enabledTarget]),
+      jsonResponse(200, { secret: generatedSecret }),
+    )
+    const wrapper = await mountTargetsView()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Show secret')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/targets/1/secret')
+    expect(page.text()).toContain('Secret of Receiver')
+    expect(page.find<HTMLInputElement>('.v-dialog input[readonly]').element.value).toBe(
+      generatedSecret,
+    )
+  })
 })

@@ -33,3 +33,27 @@ export async function createTarget(name: string, url: string): Promise<CreatedTa
 
   return (await response.json()) as CreatedTarget
 }
+
+export async function changeTargetEnabled(targetId: number, enabled: boolean): Promise<Target> {
+  const response = await fetch(`/api/targets/${targetId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Changing the target status failed with HTTP ${response.status}.`)
+  }
+
+  return (await response.json()) as Target
+}
+
+export async function fetchTargetSecret(targetId: number): Promise<string> {
+  const response = await fetch(`/api/targets/${targetId}/secret`)
+
+  if (!response.ok) {
+    throw new Error(`Loading the target secret failed with HTTP ${response.status}.`)
+  }
+
+  return ((await response.json()) as { secret: string }).secret
+}
