@@ -66,3 +66,17 @@ export async function fetchSourceSecret(sourceId: number): Promise<string> {
 
   return ((await response.json()) as { secret: string }).secret
 }
+
+export async function renameSource(sourceId: number, name: string): Promise<Source> {
+  const response = await fetch(`/api/sources/${sourceId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Renaming the source failed with HTTP ${response.status}.`)
+  }
+
+  return (await response.json()) as Source
+}

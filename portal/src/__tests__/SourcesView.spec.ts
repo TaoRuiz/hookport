@@ -224,4 +224,49 @@ describe('SourcesView', () => {
       generatedSecret,
     )
   })
+
+  it('renames a source from its row and keeps the list sorted by name', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    const otherSource = { id: 3, slug: 'other-app', name: 'Other app', enabled: true }
+    stubFetchResponses(
+      jsonResponse(200, [enabledSource, otherSource]),
+      jsonResponse(200, { ...enabledSource, name: 'Zulu app' }),
+    )
+    const wrapper = await mountSourcesView()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Rename')!
+      .trigger('click')
+    await flushPromises()
+    await page.find('.v-dialog form input').setValue('Zulu app')
+    await flushPromises()
+    await page.find('.v-dialog form').trigger('submit')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/sources/1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Zulu app' }),
+    })
+    const rowNames = wrapper.findAll('tbody tr').map((row) => row.find('td').text())
+    expect(rowNames).toEqual(['Other app', 'Zulu app'])
+  })
+
+  it('keeps the dialog open and explains when the rename fails', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, [enabledSource]), jsonResponse(500, {}))
+    const wrapper = await mountSourcesView()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Rename')!
+      .trigger('click')
+    await flushPromises()
+    await page.find('.v-dialog form').trigger('submit')
+    await flushPromises()
+
+    expect(page.text()).toContain('Unable to rename the source')
+    expect(wrapper.find('tbody').text()).toContain('Emitter app')
+  })
 })

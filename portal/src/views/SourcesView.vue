@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { changeSourceEnabled, listSources, type CreatedSource, type Source } from '@/api/sourcesApi'
 import SourceCreationDialog from '@/components/SourceCreationDialog.vue'
+import SourceRenameDialog from '@/components/SourceRenameDialog.vue'
 import SourceSecretDialog from '@/components/SourceSecretDialog.vue'
 import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 
@@ -29,14 +30,17 @@ function addCreatedSourceToList(createdSource: CreatedSource): void {
   )
 }
 
+function replaceSourceInList(changedSource: Source): void {
+  sources.value = sources.value
+    .map((listedSource) => (listedSource.id === changedSource.id ? changedSource : listedSource))
+    .sort((first, second) => first.name.localeCompare(second.name))
+}
+
 async function switchSourceEnabled(source: Source, enabled: boolean): Promise<void> {
   statusChangeErrorMessage.value = null
 
   try {
-    const changedSource = await changeSourceEnabled(source.id, enabled)
-    sources.value = sources.value.map((listedSource) =>
-      listedSource.id === changedSource.id ? changedSource : listedSource,
-    )
+    replaceSourceInList(await changeSourceEnabled(source.id, enabled))
   } catch {
     statusChangeErrorMessage.value = `Unable to change the status of ${source.slug}, please try again later.`
   }
@@ -114,6 +118,7 @@ onMounted(async () => {
                 hide-details
                 @update:model-value="switchSourceEnabled(source, Boolean($event))"
               />
+              <SourceRenameDialog :source="source" @renamed="replaceSourceInList" />
               <SourceSecretDialog :source="source" />
             </div>
           </td>
