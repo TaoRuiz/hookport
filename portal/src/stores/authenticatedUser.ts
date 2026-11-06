@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import {
   fetchAuthenticatedUser,
@@ -10,6 +10,10 @@ import {
 export const useAuthenticatedUserStore = defineStore('authenticatedUser', () => {
   const authenticatedUser = ref<AuthenticatedUser | null>(null)
   const hasCheckedSession = ref(false)
+
+  const canManageConfiguration = computed(
+    () => authenticatedUser.value?.grantedRoles.includes('ROLE_CONFIGURATION_MANAGE') ?? false,
+  )
 
   async function logIn(login: string, password: string): Promise<void> {
     authenticatedUser.value = await requestLogIn(login, password)
@@ -30,5 +34,12 @@ export const useAuthenticatedUserStore = defineStore('authenticatedUser', () => 
     hasCheckedSession.value = true
   }
 
-  return { authenticatedUser, hasCheckedSession, logIn, logOut, restoreSessionOnce }
+  return {
+    authenticatedUser,
+    hasCheckedSession,
+    canManageConfiguration,
+    logIn,
+    logOut,
+    restoreSessionOnce,
+  }
 })

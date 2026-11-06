@@ -64,6 +64,7 @@ Indexes to plan: EventIn(received_at), Delivery(status, next_attempt_at).
 - Inverse relations: EventIn -> deliveries, Delivery -> attempts (ordered by attempt number). Global event state is computed from deliveries.
 - For the events list, do not load every delivery per event: use a join or aggregate query.
 - Constructors take the required fields; no setters for fields frozen at creation (e.g. `maxAttempts`). Admin-managed entities (Source, Target, EventType, Mapping) keep plain getters and setters for CRUD.
+- Slugs are immutable identifiers: set in the constructor, no setter. Emitters reference them (`X-Source`, event `type`), so renaming one would break integrations and routing. `name` / `label` are the editable display fields.
 
 ## Flow
 1. `POST /api/events` with headers `X-Source`, `X-Signature` (HMAC-SHA256 of the raw body with the source secret) and a JSON body `{ "type", "id", "payload" }`.

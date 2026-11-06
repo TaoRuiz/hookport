@@ -27,7 +27,7 @@ final class LoginControllerTest extends WebTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSame(
-            ['login' => self::LOGIN, 'roles' => ['ROLE_USER']],
+            ['login' => self::LOGIN, 'roles' => ['ROLE_USER'], 'grantedRoles' => ['ROLE_USER']],
             json_decode($this->client->getResponse()->getContent(), true),
         );
     }

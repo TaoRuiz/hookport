@@ -38,8 +38,30 @@ final class ProfileControllerTest extends WebTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSame(
-            ['login' => self::LOGIN, 'roles' => ['ROLE_USER']],
+            ['login' => self::LOGIN, 'roles' => ['ROLE_USER'], 'grantedRoles' => ['ROLE_USER']],
             json_decode($this->client->getResponse()->getContent(), true),
         );
+    }
+
+    public function testProfileListsRolesInheritedFromTheRoleHierarchy(): void
+    {
+        $this->client->loginUser($this->createUser('configuration-admin', ['ROLE_ADMIN']));
+
+        $this->client->request('GET', '/api/me');
+
+        $profile = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(['ROLE_ADMIN', 'ROLE_USER'], $profile['roles']);
+        self::assertContains('ROLE_CONFIGURATION_MANAGE', $profile['grantedRoles']);
+        self::assertContains('ROLE_DEMO', $profile['grantedRoles']);
+    }
+
+    public function testDemoProfileDoesNotGrantConfigurationManagement(): void
+    {
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/me');
+
+        $profile = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertNotContains('ROLE_CONFIGURATION_MANAGE', $profile['grantedRoles']);
     }
 }

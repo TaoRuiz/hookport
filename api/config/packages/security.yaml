@@ -13,7 +13,7 @@ security:
 
     role_hierarchy:
         ROLE_DEMO: []
-        ROLE_ADMIN: [ROLE_DEMO, ROLE_USER_MANAGE]
+        ROLE_ADMIN: [ROLE_DEMO, ROLE_USER_MANAGE, ROLE_CONFIGURATION_MANAGE]
 
     firewalls:
         dev:

@@ -9,8 +9,7 @@ trait CreatesSources
 {
     private function createSource(string $slug, string $secret, bool $isEnabled = true): Source
     {
-        $source = new Source()
-            ->setSlug($slug)
+        $source = new Source($slug)
             ->setName(ucfirst($slug))
             ->setSecret($secret)
             ->setEnabled($isEnabled);

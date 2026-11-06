@@ -1,6 +1,7 @@
 export interface AuthenticatedUser {
   login: string
   roles: string[]
+  grantedRoles: string[]
 }
 
 export class InvalidCredentialsError extends Error {
