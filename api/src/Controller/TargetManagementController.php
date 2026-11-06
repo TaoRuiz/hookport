@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Dto\TargetCreationRequest;
+use App\Dto\TargetModificationRequest;
 use App\Entity\Target;
 use App\Repository\TargetRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -20,16 +21,7 @@ final class TargetManagementController extends AbstractController
     {
         $targets = $targetRepository->findBy([], ['name' => 'ASC']);
 
-        return $this->json(array_map(
-            static fn (Target $target): array => [
-                'id' => $target->getId(),
-                'name' => $target->getName(),
-                'protocol' => $target->getProtocol(),
-                'config' => $target->getConfig(),
-                'enabled' => $target->isEnabled(),
-            ],
-            $targets,
-        ));
+        return $this->json(array_map($this->describeTargetWithoutSecret(...), $targets));
     }
 
     #[Route('/api/targets', name: 'api_targets_create', methods: ['POST'])]
@@ -45,14 +37,10 @@ final class TargetManagementController extends AbstractController
         $entityManager->persist($target);
         $entityManager->flush();
 
-        return $this->json([
-            'id' => $target->getId(),
-            'name' => $target->getName(),
-            'protocol' => $target->getProtocol(),
-            'config' => $target->getConfig(),
-            'enabled' => $target->isEnabled(),
-            'secret' => $target->getSecret(),
-        ], Response::HTTP_CREATED);
+        return $this->json(
+            [...$this->describeTargetWithoutSecret($target), 'secret' => $target->getSecret()],
+            Response::HTTP_CREATED,
+        );
     }
 
     #[Route('/api/targets/{id}/secret', name: 'api_targets_show_secret', requirements: ['id' => '\d+'], methods: ['GET'])]
@@ -60,5 +48,43 @@ final class TargetManagementController extends AbstractController
     public function showTargetSecret(Target $target): JsonResponse
     {
         return $this->json(['secret' => $target->getSecret()]);
+    }
+
+    #[Route('/api/targets/{id}', name: 'api_targets_modify', requirements: ['id' => '\d+'], methods: ['PATCH'])]
+    #[IsGranted('ROLE_CONFIGURATION_MANAGE')]
+    public function modifyTarget(
+        Target $target,
+        #[MapRequestPayload] TargetModificationRequest $targetModificationRequest,
+        EntityManagerInterface $entityManager,
+    ): JsonResponse {
+        if (null !== $targetModificationRequest->name) {
+            $target->setName($targetModificationRequest->name);
+        }
+
+        if (null !== $targetModificationRequest->url) {
+            $target->setConfig(['url' => $targetModificationRequest->url]);
+        }
+
+        if (null !== $targetModificationRequest->enabled) {
+            $target->setEnabled($targetModificationRequest->enabled);
+        }
+
+        $entityManager->flush();
+
+        return $this->json($this->describeTargetWithoutSecret($target));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function describeTargetWithoutSecret(Target $target): array
+    {
+        return [
+            'id' => $target->getId(),
+            'name' => $target->getName(),
+            'protocol' => $target->getProtocol(),
+            'config' => $target->getConfig(),
+            'enabled' => $target->isEnabled(),
+        ];
     }
 }

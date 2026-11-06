@@ -163,4 +163,103 @@ final class TargetManagementControllerTest extends WebTestCase
 
         self::assertResponseStatusCodeSame(404);
     }
+
+    public function testAdminRenamesATarget(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example/hook', 'receiver-shared-secret');
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/targets/'.$target->getId(), ['name' => 'Renamed receiver']);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(
+            [
+                'id' => $target->getId(),
+                'name' => 'Renamed receiver',
+                'protocol' => 'http',
+                'config' => ['url' => 'https://receiver.example/hook'],
+                'enabled' => true,
+            ],
+            json_decode($this->client->getResponse()->getContent(), true),
+        );
+    }
+
+    public function testAdminChangesTheUrlOfATarget(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example/hook', 'receiver-shared-secret');
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/targets/'.$target->getId(), ['url' => 'https://receiver.example/new-hook']);
+
+        self::assertResponseIsSuccessful();
+        $storedTarget = static::getContainer()->get(TargetRepository::class)->find($target->getId());
+        self::assertSame(['url' => 'https://receiver.example/new-hook'], $storedTarget->getConfig());
+    }
+
+    public function testAdminDisablesATarget(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example/hook', 'receiver-shared-secret');
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/targets/'.$target->getId(), ['enabled' => false]);
+
+        self::assertFalse(json_decode($this->client->getResponse()->getContent(), true)['enabled']);
+    }
+
+    public function testAdminReenablesADisabledTarget(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example/hook', 'receiver-shared-secret', isEnabled: false);
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/targets/'.$target->getId(), ['enabled' => true]);
+
+        self::assertTrue(json_decode($this->client->getResponse()->getContent(), true)['enabled']);
+    }
+
+    public function testTargetFieldsNotSentAreLeftUnchanged(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example/hook', 'receiver-shared-secret', isEnabled: false);
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/targets/'.$target->getId(), ['name' => 'Renamed receiver']);
+
+        $modifiedTarget = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertFalse($modifiedTarget['enabled']);
+        self::assertSame(['url' => 'https://receiver.example/hook'], $modifiedTarget['config']);
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function invalidTargetModificationBodies(): iterable
+    {
+        yield 'blank name' => [['name' => '']];
+        yield 'blank url' => [['url' => '']];
+        yield 'url without scheme' => [['url' => 'receiver.example/hook']];
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    #[DataProvider('invalidTargetModificationBodies')]
+    public function testInvalidTargetModificationBodyIsRejected(array $body): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example/hook', 'receiver-shared-secret');
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/targets/'.$target->getId(), $body);
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testDemoCannotModifyATarget(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example/hook', 'receiver-shared-secret');
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->jsonRequest('PATCH', '/api/targets/'.$target->getId(), ['enabled' => false]);
+
+        self::assertResponseStatusCodeSame(403);
+        self::assertTrue(static::getContainer()->get(TargetRepository::class)->find($target->getId())->isEnabled());
+    }
 }
