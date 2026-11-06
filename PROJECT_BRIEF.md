@@ -162,7 +162,7 @@ This order is only a suggestion: the owner's order prevails. Each numbered item 
 7. README, diagram, deploy to the owner's VPS (hosting decided once the app is nearly done locally)
 
 ## Progress (updated when a theme is merged)
-- Done: Docker + schema (all entities), first admin command, test database, ingestion entry point (`POST /api/events`: signature, disabled source, payload validation, answers 202 but stores nothing yet), portal (login, session restore, logout), sources admin (API + page: list, create, show secret, enable/disable, rename).
-- Next candidates: store ingested events with dedupe (`feat/ingest_events`); Target, EventType, Mapping admin; routing, delivery and retries; events list page; demo targets; deploy.
+- Done: Docker + schema (all entities), first admin command, test database, ingestion (`POST /api/events`: signature, disabled source, payload validation, stores the event, duplicate (source, external id) answers 200 and stores nothing; no routing yet), portal (login, session restore, logout), sources admin (API + page: list, create, show secret, enable/disable, rename).
+- Next candidates: Target, EventType, Mapping admin (in progress, one branch each); routing, delivery and retries; events list page; demo targets; deploy.
 - Deferred: hard delete of configuration entities (needs events to check references); first admin password from an env var (deploy theme).
 - Known small gaps: after login the user always lands on home; a non-401 error on `/api/me` leaves a blank page; a logout failure is silent.
