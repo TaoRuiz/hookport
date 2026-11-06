@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { listTargets, type Target } from '@/api/targetsApi'
+import { listTargets, type CreatedTarget, type Target } from '@/api/targetsApi'
+import TargetCreationDialog from '@/components/TargetCreationDialog.vue'
+import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
+
+const authenticatedUserStore = useAuthenticatedUserStore()
 
 const targets = ref<Target[]>([])
 const isShowingDisabledTargets = ref(false)
@@ -10,6 +14,19 @@ const loadingErrorMessage = ref<string | null>(null)
 const visibleTargets = computed(() =>
   isShowingDisabledTargets.value ? targets.value : targets.value.filter((target) => target.enabled),
 )
+
+function addCreatedTargetToList(createdTarget: CreatedTarget): void {
+  const target: Target = {
+    id: createdTarget.id,
+    name: createdTarget.name,
+    protocol: createdTarget.protocol,
+    config: createdTarget.config,
+    enabled: createdTarget.enabled,
+  }
+  targets.value = [...targets.value, target].sort((first, second) =>
+    first.name.localeCompare(second.name),
+  )
+}
 
 onMounted(async () => {
   try {
@@ -26,6 +43,11 @@ onMounted(async () => {
   <v-container>
     <div class="d-flex align-center mb-4">
       <h1 class="text-h4">Targets</h1>
+      <v-spacer />
+      <TargetCreationDialog
+        v-if="authenticatedUserStore.canManageConfiguration"
+        @created="addCreatedTargetToList"
+      />
     </div>
 
     <v-switch

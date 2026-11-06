@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { createVuetify } from 'vuetify'
+import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 import TargetsView from '@/views/TargetsView.vue'
 
 const enabledTarget = {
@@ -18,6 +20,10 @@ const disabledTarget = {
   enabled: false,
 }
 
+const generatedSecret = 'a'.repeat(64)
+
+// Dialogs are teleported to the end of <body>, so the whole page is queried, not only the view.
+const page = new DOMWrapper(document.body)
 let mountedWrapper: VueWrapper | null = null
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -30,6 +36,10 @@ function stubFetchResponses(...responses: Response[]): void {
   vi.stubGlobal('fetch', fetchMock)
 }
 
+function signInWithGrantedRoles(grantedRoles: string[]): void {
+  useAuthenticatedUserStore().authenticatedUser = { login: 'someone', roles: [], grantedRoles }
+}
+
 async function mountTargetsView() {
   mountedWrapper = mount(TargetsView, {
     global: { plugins: [createVuetify()] },
@@ -40,7 +50,26 @@ async function mountTargetsView() {
   return mountedWrapper
 }
 
+async function fillAndSubmitTargetCreation(name: string, url: string) {
+  await page
+    .findAll('button')
+    .find((button) => button.text() === 'New target')!
+    .trigger('click')
+  await flushPromises()
+  const [nameInput, urlInput] = page.findAll('.v-dialog form input')
+  await nameInput!.setValue(name)
+  await urlInput!.setValue(url)
+  await flushPromises()
+  await page.find('.v-dialog form').trigger('submit')
+  await flushPromises()
+}
+
 describe('TargetsView', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    signInWithGrantedRoles(['ROLE_DEMO', 'ROLE_USER'])
+  })
+
   afterEach(() => {
     mountedWrapper?.unmount()
     document.body.innerHTML = ''
@@ -91,5 +120,57 @@ describe('TargetsView', () => {
     const wrapper = await mountTargetsView()
 
     expect(wrapper.text()).toContain('Unable to load targets')
+  })
+
+  it('hides the New target button from a user who cannot manage configuration', async () => {
+    stubFetchResponses(jsonResponse(200, []))
+
+    const wrapper = await mountTargetsView()
+
+    expect(wrapper.text()).not.toContain('New target')
+  })
+
+  it('creates a target, shows its secret and adds it to the list', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(
+      jsonResponse(200, []),
+      jsonResponse(201, { ...enabledTarget, secret: generatedSecret }),
+    )
+    const wrapper = await mountTargetsView()
+
+    await fillAndSubmitTargetCreation('Receiver', 'https://receiver.example/hook')
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/targets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Receiver', url: 'https://receiver.example/hook' }),
+    })
+    expect(page.text()).toContain('Target Receiver created')
+    expect(page.find<HTMLInputElement>('.v-dialog input[readonly]').element.value).toBe(
+      generatedSecret,
+    )
+    expect(wrapper.find('tbody').text()).toContain('Receiver')
+  })
+
+  it('does not send a URL that is not http or https', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, []))
+    await mountTargetsView()
+
+    await fillAndSubmitTargetCreation('Receiver', 'ftp://receiver.example/hook')
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(page.text()).toContain('Use a full http:// or https:// URL.')
+  })
+
+  it('keeps the form open and explains when the creation fails', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, []), jsonResponse(500, {}))
+    await mountTargetsView()
+
+    await fillAndSubmitTargetCreation('Receiver', 'https://receiver.example/hook')
+
+    expect(page.text()).toContain('Unable to create the target')
+    expect(page.text()).not.toContain('Target Receiver created')
   })
 })
