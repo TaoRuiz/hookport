@@ -41,6 +41,27 @@ final class IngestEventControllerTest extends WebTestCase
         self::assertSame(['field' => 'value'], $storedEvent->getPayload());
     }
 
+    public function testDuplicateEventIsIgnored(): void
+    {
+        $this->postSignedEvent('{"type":"record.created","id":"evt_1","payload":{"field":"value"}}');
+        $this->postSignedEvent('{"type":"record.updated","id":"evt_1","payload":{"field":"other"}}');
+
+        self::assertResponseStatusCodeSame(200);
+        $storedEvents = static::getContainer()->get(EventInRepository::class)->findBy(['externalId' => 'evt_1']);
+        self::assertCount(1, $storedEvents);
+        self::assertSame('record.created', $storedEvents[0]->getType());
+    }
+
+    public function testSameExternalIdFromAnotherSourceIsStored(): void
+    {
+        $this->createSource('other-emitter-app', 'other-shared-secret');
+        $this->postSignedEvent('{"type":"record.created","id":"evt_1","payload":{}}');
+        $this->postSignedEvent('{"type":"record.created","id":"evt_1","payload":{}}', 'other-emitter-app', 'other-shared-secret');
+
+        self::assertResponseStatusCodeSame(202);
+        self::assertCount(2, static::getContainer()->get(EventInRepository::class)->findBy(['externalId' => 'evt_1']));
+    }
+
     public function testEventWithEmptyPayloadIsAccepted(): void
     {
         $this->postSignedEvent('{"type":"record.created","id":"evt_1","payload":{}}');
@@ -70,11 +91,14 @@ final class IngestEventControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
-    private function postSignedEvent(string $rawBody): void
-    {
+    private function postSignedEvent(
+        string $rawBody,
+        string $sourceSlug = self::SOURCE_SLUG,
+        string $sourceSecret = self::SOURCE_SECRET,
+    ): void {
         $this->client->request('POST', '/api/events', server: [
-            'HTTP_X_SOURCE' => self::SOURCE_SLUG,
-            'HTTP_X_SIGNATURE' => hash_hmac('sha256', $rawBody, self::SOURCE_SECRET),
+            'HTTP_X_SOURCE' => $sourceSlug,
+            'HTTP_X_SIGNATURE' => hash_hmac('sha256', $rawBody, $sourceSecret),
             'CONTENT_TYPE' => 'application/json',
         ], content: $rawBody);
     }

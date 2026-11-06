@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Dto\EventIngestionRequest;
 use App\Entity\EventIn;
+use App\Repository\EventInRepository;
 use App\Security\AuthenticatedEventSource;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -19,9 +20,19 @@ final class IngestEventController extends AbstractController
         #[MapRequestPayload] EventIngestionRequest $eventIngestionRequest,
         #[CurrentUser] AuthenticatedEventSource $authenticatedEventSource,
         EntityManagerInterface $entityManager,
+        EventInRepository $eventInRepository,
     ): Response {
+        $source = $authenticatedEventSource->getSource();
+        $isAlreadyReceived = null !== $eventInRepository->findOneBy([
+            'source' => $source,
+            'externalId' => $eventIngestionRequest->externalId,
+        ]);
+        if ($isAlreadyReceived) {
+            return new Response(status: Response::HTTP_OK);
+        }
+
         $eventIn = new EventIn(
-            $authenticatedEventSource->getSource(),
+            $source,
             $eventIngestionRequest->externalId,
             $eventIngestionRequest->type,
             $eventIngestionRequest->payload,
