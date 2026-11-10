@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import {
   replayFailedDelivery,
   replayUnroutedEvent,
@@ -22,6 +22,8 @@ const deliveryStatusDisplays: Record<DeliveryStatus, { label: string; color: str
   failed: { label: 'Failed', color: 'error' },
 }
 
+const refreshDelayInMilliseconds = 5000
+
 const receivedEvent = ref<ReceivedEventDetail | null>(null)
 const loadingErrorMessage = ref<string | null>(null)
 const replayErrorMessage = ref<string | null>(null)
@@ -31,11 +33,36 @@ function formatDateTime(dateTime: string): string {
 }
 
 async function loadEvent(): Promise<void> {
+  receivedEvent.value = await showEvent(props.uuid)
+  loadingErrorMessage.value = null
+}
+
+let nextRefreshTimeoutId: ReturnType<typeof setTimeout> | undefined
+let isUnmounted = false
+
+// The next refresh is scheduled once the current one ends, so slow answers never overlap.
+async function loadEventThenScheduleNextRefresh(): Promise<void> {
   try {
-    receivedEvent.value = await showEvent(props.uuid)
+    await loadEvent()
   } catch {
-    loadingErrorMessage.value = 'Unable to load this event, please try again later.'
+    if (!receivedEvent.value) {
+      loadingErrorMessage.value = 'Unable to load this event, please try again later.'
+    }
+  } finally {
+    if (!isUnmounted) {
+      nextRefreshTimeoutId = setTimeout(
+        loadEventThenScheduleNextRefresh,
+        refreshDelayInMilliseconds,
+      )
+    }
   }
+}
+
+// After a replay, a failed reload is left to the next scheduled refresh.
+async function reloadEventAfterReplay(): Promise<void> {
+  try {
+    await loadEvent()
+  } catch {}
 }
 
 async function replayEventThenReload(): Promise<void> {
@@ -48,7 +75,7 @@ async function replayEventThenReload(): Promise<void> {
     return
   }
 
-  await loadEvent()
+  await reloadEventAfterReplay()
 }
 
 async function replayDeliveryThenReload(delivery: EventDelivery): Promise<void> {
@@ -61,10 +88,15 @@ async function replayDeliveryThenReload(delivery: EventDelivery): Promise<void> 
     return
   }
 
-  await loadEvent()
+  await reloadEventAfterReplay()
 }
 
-onMounted(loadEvent)
+onMounted(loadEventThenScheduleNextRefresh)
+
+onUnmounted(() => {
+  isUnmounted = true
+  clearTimeout(nextRefreshTimeoutId)
+})
 </script>
 
 <template>

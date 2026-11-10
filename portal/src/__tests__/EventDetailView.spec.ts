@@ -37,6 +37,8 @@ const routedEvent = {
 const unroutedEvent = { ...routedEvent, state: 'unrouted', deliveries: [] }
 const failedDeliveryUuid = routedEvent.deliveries[0]!.uuid
 
+let mountedWrapper: VueWrapper | null = null
+
 function signInWithGrantedRoles(grantedRoles: string[]): void {
   useAuthenticatedUserStore().authenticatedUser = { login: 'someone', roles: [], grantedRoles }
 }
@@ -55,24 +57,32 @@ function findButtonByText(wrapper: VueWrapper, text: string) {
   return wrapper.findAll('button').find((button) => button.text() === text)
 }
 
+async function waitForNextRefresh(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(5000)
+  await flushPromises()
+}
+
 async function mountEventDetailView() {
-  const wrapper = mount(EventDetailView, {
+  mountedWrapper = mount(EventDetailView, {
     props: { uuid: eventUuid },
     global: { plugins: [createVuetify()] },
   })
   await flushPromises()
 
-  return wrapper
+  return mountedWrapper
 }
 
 describe('EventDetailView', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     setActivePinia(createPinia())
     signInWithGrantedRoles(['ROLE_DEMO', 'ROLE_EVENT_REPLAY'])
   })
 
   afterEach(() => {
+    mountedWrapper?.unmount()
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it('shows the event, its payload and global state', async () => {
@@ -172,5 +182,42 @@ describe('EventDetailView', () => {
     const wrapper = await mountEventDetailView()
 
     expect(findButtonByText(wrapper, 'Replay event')).toBeUndefined()
+  })
+
+  it('refreshes the event every five seconds', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify(unroutedEvent)),
+      new Response(JSON.stringify(routedEvent)),
+    )
+    const wrapper = await mountEventDetailView()
+
+    await waitForNextRefresh()
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(wrapper.findAll('[data-test="deliveries"] tbody tr')).toHaveLength(2)
+  })
+
+  it('keeps the shown event when a refresh fails', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify(routedEvent)),
+      new Response(null, { status: 500 }),
+    )
+    const wrapper = await mountEventDetailView()
+
+    await waitForNextRefresh()
+
+    expect(wrapper.findAll('[data-test="deliveries"] tbody tr')).toHaveLength(2)
+    expect(wrapper.text()).not.toContain('Unable to load this event')
+  })
+
+  it('stops refreshing once the page is left', async () => {
+    stubFetchResponses(new Response(JSON.stringify(routedEvent)))
+    const wrapper = await mountEventDetailView()
+
+    wrapper.unmount()
+    mountedWrapper = null
+    await waitForNextRefresh()
+
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 })
