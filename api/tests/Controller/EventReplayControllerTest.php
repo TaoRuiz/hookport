@@ -13,6 +13,7 @@ use App\Tests\CreatesUsers;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 final class EventReplayControllerTest extends WebTestCase
 {
@@ -46,6 +47,20 @@ final class EventReplayControllerTest extends WebTestCase
         self::assertSame('pending', $createdDeliveries[0]['status']);
         self::assertSame(3, $createdDeliveries[0]['maxAttempts']);
         self::assertSame(1, static::getContainer()->get(DeliveryRepository::class)->count(['eventIn' => $unroutedEvent]));
+    }
+
+    public function testReplayQueuesOneDeliveryAttemptPerCreatedDelivery(): void
+    {
+        $unroutedEvent = $this->storeEventWithoutDelivery();
+        $this->createMapping($this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret'));
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('POST', '/api/events/'.$unroutedEvent->getUuid().'/replay');
+
+        $createdDelivery = static::getContainer()->get(DeliveryRepository::class)->findOneBy(['eventIn' => $unroutedEvent]);
+        $queuedEnvelopes = $this->getAsyncTransport()->getSent();
+        self::assertCount(1, $queuedEnvelopes);
+        self::assertTrue($createdDelivery->getUuid()->equals($queuedEnvelopes[0]->getMessage()->deliveryUuid));
     }
 
     public function testReplayWithStillNoMatchingMappingCreatesNothing(): void
@@ -92,6 +107,11 @@ final class EventReplayControllerTest extends WebTestCase
         $this->client->request('POST', '/api/events/'.$unroutedEvent->getUuid().'/replay');
 
         self::assertResponseStatusCodeSame(401);
+    }
+
+    private function getAsyncTransport(): InMemoryTransport
+    {
+        return static::getContainer()->get('messenger.transport.async');
     }
 
     private function storeEventWithoutDelivery(): EventIn
