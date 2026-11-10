@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { createVuetify } from 'vuetify'
+import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 import EventDetailView from '@/views/EventDetailView.vue'
 
 const eventUuid = '01890000-0000-7000-8000-000000000001'
@@ -32,8 +34,25 @@ const routedEvent = {
   ],
 }
 
+const unroutedEvent = { ...routedEvent, state: 'unrouted', deliveries: [] }
+const failedDeliveryUuid = routedEvent.deliveries[0]!.uuid
+
+function signInWithGrantedRoles(grantedRoles: string[]): void {
+  useAuthenticatedUserStore().authenticatedUser = { login: 'someone', roles: [], grantedRoles }
+}
+
 function stubFetchResponse(response: Response): void {
-  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValueOnce(response))
+  stubFetchResponses(response)
+}
+
+function stubFetchResponses(...responses: Response[]): void {
+  const fetchMock = vi.fn<typeof fetch>()
+  responses.forEach((response) => fetchMock.mockResolvedValueOnce(response))
+  vi.stubGlobal('fetch', fetchMock)
+}
+
+function findButtonByText(wrapper: VueWrapper, text: string) {
+  return wrapper.findAll('button').find((button) => button.text() === text)
 }
 
 async function mountEventDetailView() {
@@ -47,6 +66,11 @@ async function mountEventDetailView() {
 }
 
 describe('EventDetailView', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    signInWithGrantedRoles(['ROLE_DEMO', 'ROLE_EVENT_REPLAY'])
+  })
+
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -79,9 +103,7 @@ describe('EventDetailView', () => {
   })
 
   it('says when no target matched the event', async () => {
-    stubFetchResponse(
-      new Response(JSON.stringify({ ...routedEvent, state: 'unrouted', deliveries: [] })),
-    )
+    stubFetchResponse(new Response(JSON.stringify(unroutedEvent)))
 
     const wrapper = await mountEventDetailView()
 
@@ -94,5 +116,61 @@ describe('EventDetailView', () => {
     const wrapper = await mountEventDetailView()
 
     expect(wrapper.text()).toContain('Unable to load this event')
+  })
+
+  it('replays an unrouted event then shows its new deliveries', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify(unroutedEvent)),
+      new Response(JSON.stringify([])),
+      new Response(JSON.stringify(routedEvent)),
+    )
+    const wrapper = await mountEventDetailView()
+
+    await findButtonByText(wrapper, 'Replay event')!.trigger('click')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledWith(`/api/events/${eventUuid}/replay`, { method: 'POST' })
+    expect(wrapper.findAll('[data-test="deliveries"] tbody tr')).toHaveLength(2)
+  })
+
+  it('replays a failed delivery then reloads the event', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify(routedEvent)),
+      new Response(null, { status: 202 }),
+      new Response(JSON.stringify(routedEvent)),
+    )
+    const wrapper = await mountEventDetailView()
+
+    const replayButtons = wrapper.findAll('[data-test="deliveries"] button')
+    expect(replayButtons).toHaveLength(1)
+    await replayButtons[0]!.trigger('click')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledWith(`/api/deliveries/${failedDeliveryUuid}/replay`, {
+      method: 'POST',
+    })
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it('shows an error when a replay fails', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify(routedEvent)),
+      new Response(null, { status: 409 }),
+    )
+    const wrapper = await mountEventDetailView()
+
+    await wrapper.find('[data-test="deliveries"] button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unable to replay the delivery to Receiver')
+  })
+
+  it('hides the replay buttons from a user who cannot replay', async () => {
+    signInWithGrantedRoles(['ROLE_USER'])
+    stubFetchResponse(new Response(JSON.stringify(unroutedEvent)))
+
+    const wrapper = await mountEventDetailView()
+
+    expect(findButtonByText(wrapper, 'Replay event')).toBeUndefined()
   })
 })

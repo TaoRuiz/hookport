@@ -1,9 +1,19 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { showEvent, type DeliveryStatus, type ReceivedEventDetail } from '@/api/eventsApi'
+import {
+  replayFailedDelivery,
+  replayUnroutedEvent,
+  showEvent,
+  type DeliveryStatus,
+  type EventDelivery,
+  type ReceivedEventDetail,
+} from '@/api/eventsApi'
 import { eventStateDisplays } from '@/components/eventStateDisplays'
+import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 
 const props = defineProps<{ uuid: string }>()
+
+const authenticatedUserStore = useAuthenticatedUserStore()
 
 const deliveryStatusDisplays: Record<DeliveryStatus, { label: string; color: string }> = {
   pending: { label: 'Pending', color: 'grey' },
@@ -14,23 +24,61 @@ const deliveryStatusDisplays: Record<DeliveryStatus, { label: string; color: str
 
 const receivedEvent = ref<ReceivedEventDetail | null>(null)
 const loadingErrorMessage = ref<string | null>(null)
+const replayErrorMessage = ref<string | null>(null)
 
 function formatDateTime(dateTime: string): string {
   return new Date(dateTime).toLocaleString()
 }
 
-onMounted(async () => {
+async function loadEvent(): Promise<void> {
   try {
     receivedEvent.value = await showEvent(props.uuid)
   } catch {
     loadingErrorMessage.value = 'Unable to load this event, please try again later.'
   }
-})
+}
+
+async function replayEventThenReload(): Promise<void> {
+  replayErrorMessage.value = null
+
+  try {
+    await replayUnroutedEvent(props.uuid)
+  } catch {
+    replayErrorMessage.value = 'Unable to replay this event, please try again later.'
+    return
+  }
+
+  await loadEvent()
+}
+
+async function replayDeliveryThenReload(delivery: EventDelivery): Promise<void> {
+  replayErrorMessage.value = null
+
+  try {
+    await replayFailedDelivery(delivery.uuid)
+  } catch {
+    replayErrorMessage.value = `Unable to replay the delivery to ${delivery.target.name}, please try again later.`
+    return
+  }
+
+  await loadEvent()
+}
+
+onMounted(loadEvent)
 </script>
 
 <template>
   <v-container>
     <h1 class="text-h4 mb-4">Event</h1>
+
+    <v-alert
+      v-if="replayErrorMessage"
+      type="error"
+      class="mb-4"
+      closable
+      :text="replayErrorMessage"
+      @click:close="replayErrorMessage = null"
+    />
 
     <v-alert v-if="loadingErrorMessage" type="error" :text="loadingErrorMessage" />
     <v-progress-linear v-else-if="!receivedEvent" indeterminate />
@@ -73,9 +121,16 @@ onMounted(async () => {
       <pre class="mb-6">{{ JSON.stringify(receivedEvent.payload, null, 2) }}</pre>
 
       <h2 class="text-h6 mb-2">Deliveries</h2>
-      <p v-if="receivedEvent.deliveries.length === 0" class="text-medium-emphasis">
-        No target matched this event.
-      </p>
+      <template v-if="receivedEvent.deliveries.length === 0">
+        <p class="text-medium-emphasis mb-2">No target matched this event.</p>
+        <v-btn
+          v-if="authenticatedUserStore.canReplayEvents"
+          prepend-icon="mdi-replay"
+          @click="replayEventThenReload"
+        >
+          Replay event
+        </v-btn>
+      </template>
       <v-table v-else data-test="deliveries">
         <thead>
           <tr>
@@ -83,6 +138,7 @@ onMounted(async () => {
             <th>Status</th>
             <th>Attempts</th>
             <th>Next attempt at</th>
+            <th v-if="authenticatedUserStore.canReplayEvents">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -95,6 +151,16 @@ onMounted(async () => {
             </td>
             <td>{{ delivery.attemptsCount }} / {{ delivery.maxAttempts }}</td>
             <td>{{ delivery.nextAttemptAt ? formatDateTime(delivery.nextAttemptAt) : '' }}</td>
+            <td v-if="authenticatedUserStore.canReplayEvents">
+              <v-btn
+                v-if="delivery.status === 'failed'"
+                size="small"
+                prepend-icon="mdi-replay"
+                @click="replayDeliveryThenReload(delivery)"
+              >
+                Replay
+              </v-btn>
+            </td>
           </tr>
         </tbody>
       </v-table>

@@ -44,3 +44,19 @@ export async function showEvent(uuid: string): Promise<ReceivedEventDetail> {
 
   return (await response.json()) as ReceivedEventDetail
 }
+
+export async function replayUnroutedEvent(uuid: string): Promise<void> {
+  const response = await fetch(`/api/events/${uuid}/replay`, { method: 'POST' })
+
+  if (!response.ok) {
+    throw new Error(`Replaying the event failed with HTTP ${response.status}.`)
+  }
+}
+
+export async function replayFailedDelivery(uuid: string): Promise<void> {
+  const response = await fetch(`/api/deliveries/${uuid}/replay`, { method: 'POST' })
+
+  if (!response.ok) {
+    throw new Error(`Replaying the delivery failed with HTTP ${response.status}.`)
+  }
+}
