@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Dto\EventTypeCreationRequest;
+use App\Dto\EventTypeModificationRequest;
 use App\Entity\EventType;
 use App\Repository\EventTypeRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -53,5 +54,30 @@ final class EventTypeManagementController extends AbstractController
             'label' => $eventType->getLabel(),
             'enabled' => $eventType->isEnabled(),
         ], Response::HTTP_CREATED);
+    }
+
+    #[Route('/api/event-types/{id}', name: 'api_event_types_modify', requirements: ['id' => '\d+'], methods: ['PATCH'])]
+    #[IsGranted('ROLE_CONFIGURATION_MANAGE')]
+    public function modifyEventType(
+        EventType $eventType,
+        #[MapRequestPayload] EventTypeModificationRequest $eventTypeModificationRequest,
+        EntityManagerInterface $entityManager,
+    ): JsonResponse {
+        if (null !== $eventTypeModificationRequest->label) {
+            $eventType->setLabel($eventTypeModificationRequest->label);
+        }
+
+        if (null !== $eventTypeModificationRequest->enabled) {
+            $eventType->setEnabled($eventTypeModificationRequest->enabled);
+        }
+
+        $entityManager->flush();
+
+        return $this->json([
+            'id' => $eventType->getId(),
+            'slug' => $eventType->getSlug(),
+            'label' => $eventType->getLabel(),
+            'enabled' => $eventType->isEnabled(),
+        ]);
     }
 }
