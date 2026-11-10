@@ -9,8 +9,7 @@ trait CreatesEventTypes
 {
     private function createEventType(string $slug, string $label, bool $isEnabled = true): EventType
     {
-        $eventType = new EventType()
-            ->setSlug($slug)
+        $eventType = new EventType($slug)
             ->setLabel($label)
             ->setEnabled($isEnabled);
 

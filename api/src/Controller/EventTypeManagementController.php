@@ -2,11 +2,16 @@
 
 namespace App\Controller;
 
+use App\Dto\EventTypeCreationRequest;
 use App\Entity\EventType;
 use App\Repository\EventTypeRepository;
+use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Attribute\MapRequestPayload;
 use Symfony\Component\Routing\Attribute\Route;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 
 final class EventTypeManagementController extends AbstractController
 {
@@ -24,5 +29,29 @@ final class EventTypeManagementController extends AbstractController
             ],
             $eventTypes,
         ));
+    }
+
+    #[Route('/api/event-types', name: 'api_event_types_create', methods: ['POST'])]
+    #[IsGranted('ROLE_CONFIGURATION_MANAGE')]
+    public function createEventType(
+        #[MapRequestPayload] EventTypeCreationRequest $eventTypeCreationRequest,
+        EventTypeRepository $eventTypeRepository,
+        EntityManagerInterface $entityManager,
+    ): JsonResponse {
+        if (null !== $eventTypeRepository->findOneBy(['slug' => $eventTypeCreationRequest->slug])) {
+            return $this->json(['error' => 'This slug is already used.'], Response::HTTP_CONFLICT);
+        }
+
+        $eventType = new EventType($eventTypeCreationRequest->slug)
+            ->setLabel($eventTypeCreationRequest->label);
+        $entityManager->persist($eventType);
+        $entityManager->flush();
+
+        return $this->json([
+            'id' => $eventType->getId(),
+            'slug' => $eventType->getSlug(),
+            'label' => $eventType->getLabel(),
+            'enabled' => $eventType->isEnabled(),
+        ], Response::HTTP_CREATED);
     }
 }
