@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createVuetify } from 'vuetify'
 import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
@@ -22,6 +22,19 @@ const disabledWildcardMapping = {
   enabled: false,
 }
 
+const enabledSource = { id: 1, slug: 'emitter-app', name: 'Emitter app', enabled: true }
+const disabledSource = { id: 2, slug: 'retired-app', name: 'Retired app', enabled: false }
+const enabledEventType = { id: 1, slug: 'record.created', label: 'Record created', enabled: true }
+const enabledTarget = {
+  id: 1,
+  name: 'Receiver',
+  protocol: 'http',
+  config: { url: 'https://receiver.example.test' },
+  enabled: true,
+}
+
+// Dialogs and select menus are teleported to the end of <body>, so the whole page is queried.
+const page = new DOMWrapper(document.body)
 let mountedWrapper: VueWrapper | null = null
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -34,6 +47,10 @@ function stubFetchResponses(...responses: Response[]): void {
   vi.stubGlobal('fetch', fetchMock)
 }
 
+function signInWithGrantedRoles(grantedRoles: string[]): void {
+  useAuthenticatedUserStore().authenticatedUser = { login: 'someone', roles: [], grantedRoles }
+}
+
 async function mountMappingsView() {
   mountedWrapper = mount(MappingsView, {
     global: { plugins: [createVuetify()] },
@@ -44,14 +61,52 @@ async function mountMappingsView() {
   return mountedWrapper
 }
 
+async function openMappingCreationDialog() {
+  await page
+    .findAll('button')
+    .find((button) => button.text() === 'New mapping')!
+    .trigger('click')
+  await flushPromises()
+}
+
+async function openSelectMenu(selectLabel: string) {
+  const select = page
+    .findAll('.v-dialog .v-select')
+    .find((candidate) => candidate.find('label').text() === selectLabel)!
+  await select.find('.v-field').trigger('mousedown')
+  await flushPromises()
+}
+
+function optionsOfOpenMenu() {
+  return page.findAll('.v-overlay--active .v-list-item')
+}
+
+async function chooseInSelect(selectLabel: string, optionTitle: string) {
+  await openSelectMenu(selectLabel)
+  await optionsOfOpenMenu()
+    .find((option) => option.text() === optionTitle)!
+    .trigger('click')
+  await flushPromises()
+}
+
+async function submitMappingCreation() {
+  await page.find('.v-dialog form').trigger('submit')
+  await flushPromises()
+}
+
+function stubChoicesThen(...responsesAfterChoices: Response[]): Response[] {
+  return [
+    jsonResponse(200, [enabledSource, disabledSource]),
+    jsonResponse(200, [enabledEventType]),
+    jsonResponse(200, [enabledTarget]),
+    ...responsesAfterChoices,
+  ]
+}
+
 describe('MappingsView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    useAuthenticatedUserStore().authenticatedUser = {
-      login: 'someone',
-      roles: [],
-      grantedRoles: ['ROLE_DEMO', 'ROLE_USER'],
-    }
+    signInWithGrantedRoles(['ROLE_DEMO', 'ROLE_USER'])
   })
 
   afterEach(() => {
@@ -102,5 +157,93 @@ describe('MappingsView', () => {
     const wrapper = await mountMappingsView()
 
     expect(wrapper.text()).toContain('Unable to load mappings')
+  })
+
+  it('hides the New mapping button from a user who cannot manage configuration', async () => {
+    stubFetchResponses(jsonResponse(200, []))
+
+    const wrapper = await mountMappingsView()
+
+    expect(wrapper.text()).not.toContain('New mapping')
+  })
+
+  it('offers only enabled sources to choose from', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, []), ...stubChoicesThen())
+    await mountMappingsView()
+    await openMappingCreationDialog()
+    await openSelectMenu('Source')
+
+    expect(optionsOfOpenMenu().map((option) => option.text())).toEqual(['Emitter app'])
+  })
+
+  it('creates a mapping for a source and an event type and adds it to the list', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(
+      jsonResponse(200, []),
+      ...stubChoicesThen(jsonResponse(201, specificMapping)),
+    )
+    const wrapper = await mountMappingsView()
+    await openMappingCreationDialog()
+
+    await chooseInSelect('Source', 'Emitter app')
+    await chooseInSelect('Event type', 'record.created')
+    await chooseInSelect('Target', 'Receiver')
+    await page.find('.v-dialog input[type="number"]').setValue('3')
+    await submitMappingCreation()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/mappings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceId: 1, eventTypeId: 1, targetId: 1, maxAttempts: 3 }),
+    })
+    expect(wrapper.find('tbody').text()).toContain('Receiver')
+  })
+
+  it('sends a wildcard source and event type when none is chosen', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    const wildcardMapping = { ...disabledWildcardMapping, enabled: true }
+    stubFetchResponses(
+      jsonResponse(200, []),
+      ...stubChoicesThen(jsonResponse(201, wildcardMapping)),
+    )
+    await mountMappingsView()
+    await openMappingCreationDialog()
+
+    await chooseInSelect('Target', 'Receiver')
+    await submitMappingCreation()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/mappings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceId: null, eventTypeId: null, targetId: 1, maxAttempts: 5 }),
+    })
+  })
+
+  it('does not send a mapping without a target', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, []), ...stubChoicesThen())
+    await mountMappingsView()
+    await openMappingCreationDialog()
+
+    await submitMappingCreation()
+
+    expect(fetch).toHaveBeenCalledTimes(4)
+    expect(page.text()).toContain('Target is required.')
+  })
+
+  it('explains when the mapping already exists', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(
+      jsonResponse(200, []),
+      ...stubChoicesThen(jsonResponse(409, { error: 'This mapping already exists.' })),
+    )
+    await mountMappingsView()
+    await openMappingCreationDialog()
+
+    await chooseInSelect('Target', 'Receiver')
+    await submitMappingCreation()
+
+    expect(page.text()).toContain('This mapping already exists.')
   })
 })

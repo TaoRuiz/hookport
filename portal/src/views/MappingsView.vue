@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { listMappings, type Mapping } from '@/api/mappingsApi'
+import MappingCreationDialog from '@/components/MappingCreationDialog.vue'
+import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
+
+const authenticatedUserStore = useAuthenticatedUserStore()
 
 const mappings = ref<Mapping[]>([])
 const isShowingDisabledMappings = ref(false)
@@ -12,6 +16,12 @@ const visibleMappings = computed(() =>
     ? mappings.value
     : mappings.value.filter((mapping) => mapping.enabled),
 )
+
+function addCreatedMappingToList(createdMapping: Mapping): void {
+  mappings.value = [...mappings.value, createdMapping].sort(
+    (first, second) => first.target.name.localeCompare(second.target.name) || first.id - second.id,
+  )
+}
 
 onMounted(async () => {
   try {
@@ -26,7 +36,14 @@ onMounted(async () => {
 
 <template>
   <v-container>
-    <h1 class="text-h4 mb-4">Mappings</h1>
+    <div class="d-flex align-center mb-4">
+      <h1 class="text-h4">Mappings</h1>
+      <v-spacer />
+      <MappingCreationDialog
+        v-if="authenticatedUserStore.canManageConfiguration"
+        @created="addCreatedMappingToList"
+      />
+    </div>
 
     <v-switch
       v-model="isShowingDisabledMappings"
