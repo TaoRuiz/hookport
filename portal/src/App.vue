@@ -14,6 +14,7 @@ async function logOutAndGoToLogin(): Promise<void> {
 <template>
   <v-app>
     <v-app-bar v-if="authenticatedUserStore.authenticatedUser" title="HookPort">
+      <v-btn :to="{ name: 'events' }">Events</v-btn>
       <v-btn :to="{ name: 'sources' }">Sources</v-btn>
       <v-btn :to="{ name: 'targets' }">Targets</v-btn>
       <v-btn :to="{ name: 'event-types' }">Event types</v-btn>
