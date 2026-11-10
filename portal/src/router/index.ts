@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, type RouterHistory } from 'vue-router'
 import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
+import EventsView from '@/views/EventsView.vue'
 import EventTypesView from '@/views/EventTypesView.vue'
 import HomeView from '@/views/HomeView.vue'
 import LoginView from '@/views/LoginView.vue'
@@ -19,6 +20,7 @@ export function createAppRouter(history: RouterHistory) {
     routes: [
       { path: '/', name: 'home', component: HomeView },
       { path: '/login', name: 'login', component: LoginView, meta: { isPublic: true } },
+      { path: '/events', name: 'events', component: EventsView },
       { path: '/sources', name: 'sources', component: SourcesView },
       { path: '/targets', name: 'targets', component: TargetsView },
       { path: '/event-types', name: 'event-types', component: EventTypesView },
