@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { showDelivery, type DeliveryDetail } from '@/api/deliveriesApi'
 import { replayFailedDelivery } from '@/api/eventsApi'
 import { deliveryStatusDisplays } from '@/components/deliveryStatusDisplays'
@@ -8,6 +8,8 @@ import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 const props = defineProps<{ uuid: string }>()
 
 const authenticatedUserStore = useAuthenticatedUserStore()
+
+const refreshDelayInMilliseconds = 5000
 
 const delivery = ref<DeliveryDetail | null>(null)
 const loadingErrorMessage = ref<string | null>(null)
@@ -18,11 +20,36 @@ function formatDateTime(dateTime: string): string {
 }
 
 async function loadDelivery(): Promise<void> {
+  delivery.value = await showDelivery(props.uuid)
+  loadingErrorMessage.value = null
+}
+
+let nextRefreshTimeoutId: ReturnType<typeof setTimeout> | undefined
+let isUnmounted = false
+
+// The next refresh is scheduled once the current one ends, so slow answers never overlap.
+async function loadDeliveryThenScheduleNextRefresh(): Promise<void> {
   try {
-    delivery.value = await showDelivery(props.uuid)
+    await loadDelivery()
   } catch {
-    loadingErrorMessage.value = 'Unable to load this delivery, please try again later.'
+    if (!delivery.value) {
+      loadingErrorMessage.value = 'Unable to load this delivery, please try again later.'
+    }
+  } finally {
+    if (!isUnmounted) {
+      nextRefreshTimeoutId = setTimeout(
+        loadDeliveryThenScheduleNextRefresh,
+        refreshDelayInMilliseconds,
+      )
+    }
   }
+}
+
+// After a replay, a failed reload is left to the next scheduled refresh.
+async function reloadDeliveryAfterReplay(): Promise<void> {
+  try {
+    await loadDelivery()
+  } catch {}
 }
 
 async function replayDeliveryThenReload(): Promise<void> {
@@ -35,10 +62,15 @@ async function replayDeliveryThenReload(): Promise<void> {
     return
   }
 
-  await loadDelivery()
+  await reloadDeliveryAfterReplay()
 }
 
-onMounted(loadDelivery)
+onMounted(loadDeliveryThenScheduleNextRefresh)
+
+onUnmounted(() => {
+  isUnmounted = true
+  clearTimeout(nextRefreshTimeoutId)
+})
 </script>
 
 <template>

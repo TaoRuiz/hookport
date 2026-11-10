@@ -37,6 +37,8 @@ const retryingDelivery = {
 
 const failedDelivery = { ...retryingDelivery, status: 'failed', nextAttemptAt: null }
 
+let mountedWrapper: VueWrapper | null = null
+
 function signInWithGrantedRoles(grantedRoles: string[]): void {
   useAuthenticatedUserStore().authenticatedUser = { login: 'someone', roles: [], grantedRoles }
 }
@@ -55,24 +57,32 @@ function findReplayButton(wrapper: VueWrapper) {
   return wrapper.findAll('button').find((button) => button.text() === 'Replay')
 }
 
+async function waitForNextRefresh(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(5000)
+  await flushPromises()
+}
+
 async function mountDeliveryDetailView() {
-  const wrapper = mount(DeliveryDetailView, {
+  mountedWrapper = mount(DeliveryDetailView, {
     props: { uuid: deliveryUuid },
     global: { plugins: [createVuetify()], stubs: { RouterLink: RouterLinkStub } },
   })
   await flushPromises()
 
-  return wrapper
+  return mountedWrapper
 }
 
 describe('DeliveryDetailView', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     setActivePinia(createPinia())
     signInWithGrantedRoles(['ROLE_DEMO', 'ROLE_EVENT_REPLAY'])
   })
 
   afterEach(() => {
+    mountedWrapper?.unmount()
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it('shows the delivery with a link to its event', async () => {
@@ -169,5 +179,42 @@ describe('DeliveryDetailView', () => {
     const wrapper = await mountDeliveryDetailView()
 
     expect(findReplayButton(wrapper)).toBeUndefined()
+  })
+
+  it('refreshes the delivery every five seconds', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify(retryingDelivery)),
+      new Response(JSON.stringify(failedDelivery)),
+    )
+    const wrapper = await mountDeliveryDetailView()
+
+    await waitForNextRefresh()
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).toContain('Failed')
+  })
+
+  it('keeps the shown delivery when a refresh fails', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify(retryingDelivery)),
+      new Response(null, { status: 500 }),
+    )
+    const wrapper = await mountDeliveryDetailView()
+
+    await waitForNextRefresh()
+
+    expect(wrapper.findAll('[data-test="attempts"] tbody tr')).toHaveLength(2)
+    expect(wrapper.text()).not.toContain('Unable to load this delivery')
+  })
+
+  it('stops refreshing once the page is left', async () => {
+    stubFetchResponses(new Response(JSON.stringify(retryingDelivery)))
+    const wrapper = await mountDeliveryDetailView()
+
+    wrapper.unmount()
+    mountedWrapper = null
+    await waitForNextRefresh()
+
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 })
