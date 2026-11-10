@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createVuetify } from 'vuetify'
 import EventsView from '@/views/EventsView.vue'
@@ -21,7 +21,18 @@ const eventNeedingAttention = {
 let mountedWrapper: VueWrapper | null = null
 
 function stubFetchResponse(response: Response): void {
-  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValueOnce(response))
+  stubFetchResponses(response)
+}
+
+function stubFetchResponses(...responses: Response[]): void {
+  const fetchMock = vi.fn<typeof fetch>()
+  responses.forEach((response) => fetchMock.mockResolvedValueOnce(response))
+  vi.stubGlobal('fetch', fetchMock)
+}
+
+async function waitForNextRefresh(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(5000)
+  await flushPromises()
 }
 
 async function mountEventsView() {
@@ -32,9 +43,14 @@ async function mountEventsView() {
 }
 
 describe('EventsView', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  })
+
   afterEach(() => {
     mountedWrapper?.unmount()
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it('lists the events with their source, type and global state', async () => {
@@ -66,5 +82,42 @@ describe('EventsView', () => {
     const wrapper = await mountEventsView()
 
     expect(wrapper.text()).toContain('Unable to load events')
+  })
+
+  it('refreshes the events every five seconds', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify([deliveredEvent])),
+      new Response(JSON.stringify([eventNeedingAttention, deliveredEvent])),
+    )
+    const wrapper = await mountEventsView()
+
+    await waitForNextRefresh()
+
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(2)
+  })
+
+  it('keeps the listed events when a refresh fails', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify([deliveredEvent])),
+      new Response(null, { status: 500 }),
+    )
+    const wrapper = await mountEventsView()
+
+    await waitForNextRefresh()
+
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('Unable to load events')
+  })
+
+  it('stops refreshing once the page is left', async () => {
+    stubFetchResponses(new Response(JSON.stringify([deliveredEvent])))
+    const wrapper = await mountEventsView()
+
+    wrapper.unmount()
+    mountedWrapper = null
+    await waitForNextRefresh()
+
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 })

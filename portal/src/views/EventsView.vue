@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { listEvents, type EventState, type ReceivedEvent } from '@/api/eventsApi'
 
 const eventStateDisplays: Record<EventState, { label: string; color: string }> = {
@@ -9,6 +9,8 @@ const eventStateDisplays: Record<EventState, { label: string; color: string }> =
   needs_attention: { label: 'Needs attention', color: 'error' },
 }
 
+const refreshDelayInMilliseconds = 5000
+
 const receivedEvents = ref<ReceivedEvent[]>([])
 const isLoading = ref(true)
 const loadingErrorMessage = ref<string | null>(null)
@@ -17,14 +19,34 @@ function formatReceivedAt(receivedAt: string): string {
   return new Date(receivedAt).toLocaleString()
 }
 
-onMounted(async () => {
+let nextRefreshTimeoutId: ReturnType<typeof setTimeout> | undefined
+let isUnmounted = false
+
+// The next refresh is scheduled once the current one ends, so slow answers never overlap.
+async function loadEventsThenScheduleNextRefresh(): Promise<void> {
   try {
     receivedEvents.value = await listEvents()
+    loadingErrorMessage.value = null
   } catch {
-    loadingErrorMessage.value = 'Unable to load events, please try again later.'
+    if (isLoading.value) {
+      loadingErrorMessage.value = 'Unable to load events, please try again later.'
+    }
   } finally {
     isLoading.value = false
+    if (!isUnmounted) {
+      nextRefreshTimeoutId = setTimeout(
+        loadEventsThenScheduleNextRefresh,
+        refreshDelayInMilliseconds,
+      )
+    }
   }
+}
+
+onMounted(loadEventsThenScheduleNextRefresh)
+
+onUnmounted(() => {
+  isUnmounted = true
+  clearTimeout(nextRefreshTimeoutId)
 })
 </script>
 
