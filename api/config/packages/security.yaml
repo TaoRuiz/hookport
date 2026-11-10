@@ -12,7 +12,7 @@ security:
                 property: login
 
     role_hierarchy:
-        ROLE_DEMO: []
+        ROLE_DEMO: [ROLE_EVENT_REPLAY]
         ROLE_ADMIN: [ROLE_DEMO, ROLE_USER_MANAGE, ROLE_CONFIGURATION_MANAGE]
 
     firewalls:

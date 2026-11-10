@@ -5,6 +5,7 @@ namespace App\Controller;
 use App\Dto\EventIngestionRequest;
 use App\Entity\EventIn;
 use App\Repository\EventInRepository;
+use App\Routing\EventRouter;
 use App\Security\AuthenticatedEventSource;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -21,6 +22,7 @@ final class IngestEventController extends AbstractController
         #[CurrentUser] AuthenticatedEventSource $authenticatedEventSource,
         EntityManagerInterface $entityManager,
         EventInRepository $eventInRepository,
+        EventRouter $eventRouter,
     ): Response {
         $source = $authenticatedEventSource->getSource();
         $isAlreadyReceived = null !== $eventInRepository->findOneBy([
@@ -38,6 +40,7 @@ final class IngestEventController extends AbstractController
             $eventIngestionRequest->payload,
         );
         $entityManager->persist($eventIn);
+        $eventRouter->createDeliveriesFor($eventIn);
         $entityManager->flush();
 
         return new Response(status: Response::HTTP_ACCEPTED);
