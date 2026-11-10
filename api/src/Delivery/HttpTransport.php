@@ -5,6 +5,7 @@ namespace App\Delivery;
 use App\Entity\EventIn;
 use App\Entity\Target;
 use App\Enum\DeliveryOutcome;
+use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
 final readonly class HttpTransport implements DeliveryTransport
@@ -34,12 +35,18 @@ final readonly class HttpTransport implements DeliveryTransport
             'max_duration' => self::MAX_DURATION_IN_SECONDS,
         ]);
 
-        $responseCode = $response->getStatusCode();
+        // The client is lazy: timeouts and connection errors surface when the response is read.
+        try {
+            $responseCode = $response->getStatusCode();
+            $responseBody = $response->getContent(false);
+        } catch (TransportExceptionInterface $transportException) {
+            return new DeliveryResult(DeliveryOutcome::RetryableFailure, failureReason: $transportException->getMessage());
+        }
 
         return new DeliveryResult(
             $this->classifyResponseCode($responseCode),
             $responseCode,
-            $this->extractResponseExcerpt($response->getContent(false)),
+            $this->extractResponseExcerpt($responseBody),
         );
     }
 

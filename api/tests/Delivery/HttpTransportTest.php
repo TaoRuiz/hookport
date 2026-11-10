@@ -66,6 +66,25 @@ final class HttpTransportTest extends TestCase
         self::assertSame($responseCode, $deliveryResult->responseCode);
     }
 
+    public static function unansweredRequestErrors(): iterable
+    {
+        yield 'timeout' => ['Idle timeout reached for "https://receiver.example.test/hook".'];
+        yield 'connection error' => ['Could not resolve host "receiver.example.test".'];
+    }
+
+    #[DataProvider('unansweredRequestErrors')]
+    public function testUnansweredRequestIsRetryableWithoutResponseCode(string $transportError): void
+    {
+        $httpClient = new MockHttpClient(new MockResponse('', ['error' => $transportError]));
+
+        $deliveryResult = new HttpTransport($httpClient)->deliver($this->createEvent(), $this->createTarget(), 1);
+
+        self::assertSame(DeliveryOutcome::RetryableFailure, $deliveryResult->outcome);
+        self::assertNull($deliveryResult->responseCode);
+        self::assertNull($deliveryResult->responseExcerpt);
+        self::assertSame($transportError, $deliveryResult->failureReason);
+    }
+
     public function testLongResponseBodyIsTruncated(): void
     {
         $httpClient = new MockHttpClient(new MockResponse(str_repeat('a', 600), ['http_code' => 500]));
