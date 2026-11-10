@@ -77,20 +77,20 @@ Indexes to plan: EventIn(received_at), Delivery(status, next_attempt_at).
 3. Duplicate (source, id) already stored: return 200, do nothing.
 4. Store the event. Find matching mappings, create ONE Delivery per distinct target (if several mappings match the same target, deliver once; its `max_attempts` comes from the most specific mapping, i.e. the one with the most criteria set, and on a tie (source only vs type only) the highest `max_attempts` wins), dispatch one Messenger message per delivery, answer `202` immediately.
 5. Unknown event type or no matching mapping: the event is still stored and answered with `202`; it has zero deliveries and shows as `unrouted` in the dashboard. Never answer 4xx for this (emitters like Stripe would retry forever).
-6. Worker sends a POST to the target with headers `X-Event-Id`, `X-Event-Type`, `X-Delivery-Attempt`, `X-Signature` (HMAC with the target secret). Short timeout (e.g. 5s).
+6. Worker sends a POST to the target with headers `X-Event-Id` (the internal event uuid, unique across sources), `X-Event-Type`, `X-Delivery-Attempt`, `X-Signature` (HMAC with the target secret). The body is the event payload alone. Short timeout (e.g. 5s).
 7. Record a DeliveryAttempt and update the Delivery status.
 
 ## Retry policy
 - 2xx: `delivered`.
 - 5xx, timeout, connection error, 408, 429: `retrying` with exponential backoff (e.g. 1m, 5m, 30m, 2h), up to the delivery's max_attempts, then `failed`.
 - Other 4xx: `failed` immediately (retrying is pointless until config is fixed).
-- Manual replay of a failed delivery: dashboard button creates a new attempt and resets it to `pending`.
+- Manual replay of a failed delivery: dashboard button creates a new attempt and resets it to `pending`. It reuses the same delivery (one delivery per event and target, full history in one place) and the attempt count keeps growing: past `max_attempts`, a replay gets a single attempt without automatic retries.
 - Replay of an unrouted event (`POST /api/events/{uuid}/replay`, `ROLE_EVENT_REPLAY`): re-runs the mapping lookup for the event (useful after adding a missing mapping) and creates the deliveries that now match. Refused (409) if the event already has deliveries.
 - Targets must dedupe on `X-Event-Id` (delivery is at-least-once). Document this.
 - Implementation: the policy is per delivery (`max_attempts`), which Messenger's built-in retry strategy (configured per transport) cannot express. Configure the transport without Messenger retries. The handler never throws on a delivery failure: it records the attempt, and on a retryable failure it re-dispatches the message with a `DelayStamp` computed from the attempt number and sets `next_attempt_at`.
 
 ## Extensibility (design now, implement later)
-- Single interface `DeliveryTransport::deliver(EventIn, Target): DeliveryResult` where DeliveryResult is normalized (success / retryable failure / permanent failure + reason).
+- Single interface `DeliveryTransport::deliver(EventIn, Target, int $attemptNumber): DeliveryResult` where DeliveryResult is normalized (success / retryable failure / permanent failure + reason). The transport receives only what it sends (the attempt number fills `X-Delivery-Attempt`); it never decides retries. The whole Target is passed because its `config` is protocol-specific.
 - v1 ships only `HttpTransport`. AMQP/MQTT would be new implementations (Target.protocol enum + config JSON), no change to the core (retries, history, replay).
 
 ## Dashboard (v1)
@@ -163,7 +163,7 @@ This order is only a suggestion: the owner's order prevails. Each numbered item 
 7. README, diagram, deploy to the owner's VPS (hosting decided once the app is nearly done locally)
 
 ## Progress (updated when a theme is merged)
-- Done: Docker + schema (all entities), first admin command, test database, ingestion (`POST /api/events`: signature, disabled source, payload validation, stores the event, duplicate (source, external id) answers 200 and stores nothing), portal (login, session restore, logout), sources admin (API + page: list, create, show secret, enable/disable, rename), targets admin (API + page: list, create, show secret, enable/disable, edit name and URL), event types admin (API + page: list, create, enable/disable, edit label; slug free-form except spaces, to match any emitter's naming), mappings admin (API + page: list, create with wildcards, enable/disable, edit max_attempts; identical mapping refused with 409; routing fields are frozen, re-route by creating a new mapping and disabling the old one), event routing (ingestion creates one pending delivery per distinct matching target, no message dispatched yet; replay of unrouted events).
-- Next candidates: delivery (Messenger dispatch, worker, HttpTransport) and retries; events list page; demo targets; deploy.
+- Done: Docker + schema (all entities), first admin command, test database, ingestion (`POST /api/events`: signature, disabled source, payload validation, stores the event, duplicate (source, external id) answers 200 and stores nothing), portal (login, session restore, logout), sources admin (API + page: list, create, show secret, enable/disable, rename), targets admin (API + page: list, create, show secret, enable/disable, edit name and URL), event types admin (API + page: list, create, enable/disable, edit label; slug free-form except spaces, to match any emitter's naming), mappings admin (API + page: list, create with wildcards, enable/disable, edit max_attempts; identical mapping refused with 409; routing fields are frozen, re-route by creating a new mapping and disabling the old one), event routing (ingestion creates one pending delivery per distinct matching target; replay of unrouted events), delivery (Messenger Doctrine transport without built-in retries; one `AttemptDelivery` message per delivery at ingestion and replay; `DeliveryTransport` + `HttpTransport` posting signed requests with a 5s limit; handler records each attempt, retries 5xx/408/429/timeouts with backoff 1m, 5m, 30m, 2h until max_attempts, fails other 4xx and disabled targets immediately; `POST /api/deliveries/{uuid}/replay` re-queues a failed delivery, attempt count keeps growing so a replay past max_attempts gets a single attempt).
+- Next candidates: events list page; demo targets; deploy.
 - Deferred: hard delete of configuration entities (needs events to check references); first admin password from an env var (deploy theme).
-- Known small gaps: after login the user always lands on home; a non-401 error on `/api/me` leaves a blank page; a logout failure is silent.
+- Known small gaps: an empty payload `{}` is stored as an empty PHP array and forwarded as `[]`; after login the user always lands on home; a non-401 error on `/api/me` leaves a blank page; a logout failure is silent.
