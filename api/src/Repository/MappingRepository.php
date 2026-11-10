@@ -15,4 +15,22 @@ class MappingRepository extends ServiceEntityRepository
     {
         parent::__construct($registry, Mapping::class);
     }
+
+    /**
+     * Joins source, event type and target in the same query, grouped by target name.
+     *
+     * @return list<Mapping>
+     */
+    public function findAllWithRoutingEndpointsSortedByTargetName(): array
+    {
+        return $this->createQueryBuilder('mapping')
+            ->addSelect('source', 'eventType', 'target')
+            ->leftJoin('mapping.source', 'source')
+            ->leftJoin('mapping.eventType', 'eventType')
+            ->innerJoin('mapping.target', 'target')
+            ->orderBy('target.name', 'ASC')
+            ->addOrderBy('mapping.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
 }
