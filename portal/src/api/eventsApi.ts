@@ -18,3 +18,29 @@ export async function listEvents(): Promise<ReceivedEvent[]> {
 
   return (await response.json()) as ReceivedEvent[]
 }
+
+export type DeliveryStatus = 'pending' | 'retrying' | 'delivered' | 'failed'
+
+export interface EventDelivery {
+  uuid: string
+  target: { id: number; name: string }
+  status: DeliveryStatus
+  attemptsCount: number
+  maxAttempts: number
+  nextAttemptAt: string | null
+}
+
+export interface ReceivedEventDetail extends ReceivedEvent {
+  payload: unknown
+  deliveries: EventDelivery[]
+}
+
+export async function showEvent(uuid: string): Promise<ReceivedEventDetail> {
+  const response = await fetch(`/api/events/${uuid}`)
+
+  if (!response.ok) {
+    throw new Error(`Loading the event failed with HTTP ${response.status}.`)
+  }
+
+  return (await response.json()) as ReceivedEventDetail
+}

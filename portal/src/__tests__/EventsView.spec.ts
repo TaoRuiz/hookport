@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
 import { createVuetify } from 'vuetify'
 import EventsView from '@/views/EventsView.vue'
 
@@ -36,7 +36,9 @@ async function waitForNextRefresh(): Promise<void> {
 }
 
 async function mountEventsView() {
-  mountedWrapper = mount(EventsView, { global: { plugins: [createVuetify()] } })
+  mountedWrapper = mount(EventsView, {
+    global: { plugins: [createVuetify()], stubs: { RouterLink: RouterLinkStub } },
+  })
   await flushPromises()
 
   return mountedWrapper
@@ -66,6 +68,17 @@ describe('EventsView', () => {
     expect(rows[1]!.text()).toContain('record.created')
     expect(rows[1]!.text()).toContain('emitter-app')
     expect(rows[1]!.text()).toContain('Delivered')
+  })
+
+  it('links each event to its detail page', async () => {
+    stubFetchResponse(new Response(JSON.stringify([deliveredEvent])))
+
+    const wrapper = await mountEventsView()
+
+    expect(wrapper.findComponent(RouterLinkStub).props('to')).toEqual({
+      name: 'event-detail',
+      params: { uuid: deliveredEvent.uuid },
+    })
   })
 
   it('says when no event was received yet', async () => {

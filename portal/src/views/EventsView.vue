@@ -1,13 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import { listEvents, type EventState, type ReceivedEvent } from '@/api/eventsApi'
-
-const eventStateDisplays: Record<EventState, { label: string; color: string }> = {
-  unrouted: { label: 'Unrouted', color: 'grey' },
-  in_progress: { label: 'In progress', color: 'warning' },
-  delivered: { label: 'Delivered', color: 'success' },
-  needs_attention: { label: 'Needs attention', color: 'error' },
-}
+import { listEvents, type ReceivedEvent } from '@/api/eventsApi'
+import { eventStateDisplays } from '@/components/eventStateDisplays'
 
 const refreshDelayInMilliseconds = 5000
 
@@ -79,7 +73,11 @@ onUnmounted(() => {
           <td>
             <code>{{ receivedEvent.source.slug }}</code>
           </td>
-          <td>{{ receivedEvent.externalId }}</td>
+          <td>
+            <router-link :to="{ name: 'event-detail', params: { uuid: receivedEvent.uuid } }">
+              {{ receivedEvent.externalId }}
+            </router-link>
+          </td>
           <td>
             <v-chip :color="eventStateDisplays[receivedEvent.state].color" size="small">
               {{ eventStateDisplays[receivedEvent.state].label }}
