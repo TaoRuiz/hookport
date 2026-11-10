@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount, RouterLinkStub } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { createVuetify } from 'vuetify'
+import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 import DeliveryDetailView from '@/views/DeliveryDetailView.vue'
 
 const deliveryUuid = '01890000-0000-7000-8000-000000000011'
@@ -33,8 +35,24 @@ const retryingDelivery = {
   ],
 }
 
+const failedDelivery = { ...retryingDelivery, status: 'failed', nextAttemptAt: null }
+
+function signInWithGrantedRoles(grantedRoles: string[]): void {
+  useAuthenticatedUserStore().authenticatedUser = { login: 'someone', roles: [], grantedRoles }
+}
+
 function stubFetchResponse(response: Response): void {
-  vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValueOnce(response))
+  stubFetchResponses(response)
+}
+
+function stubFetchResponses(...responses: Response[]): void {
+  const fetchMock = vi.fn<typeof fetch>()
+  responses.forEach((response) => fetchMock.mockResolvedValueOnce(response))
+  vi.stubGlobal('fetch', fetchMock)
+}
+
+function findReplayButton(wrapper: VueWrapper) {
+  return wrapper.findAll('button').find((button) => button.text() === 'Replay')
 }
 
 async function mountDeliveryDetailView() {
@@ -48,6 +66,11 @@ async function mountDeliveryDetailView() {
 }
 
 describe('DeliveryDetailView', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    signInWithGrantedRoles(['ROLE_DEMO', 'ROLE_EVENT_REPLAY'])
+  })
+
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -98,5 +121,53 @@ describe('DeliveryDetailView', () => {
     const wrapper = await mountDeliveryDetailView()
 
     expect(wrapper.text()).toContain('Unable to load this delivery')
+  })
+
+  it('replays a failed delivery then reloads it', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify(failedDelivery)),
+      new Response(null, { status: 202 }),
+      new Response(JSON.stringify({ ...failedDelivery, status: 'pending' })),
+    )
+    const wrapper = await mountDeliveryDetailView()
+
+    await findReplayButton(wrapper)!.trigger('click')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledWith(`/api/deliveries/${deliveryUuid}/replay`, {
+      method: 'POST',
+    })
+    expect(wrapper.text()).toContain('Pending')
+    expect(findReplayButton(wrapper)).toBeUndefined()
+  })
+
+  it('shows an error when the replay fails', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify(failedDelivery)),
+      new Response(null, { status: 409 }),
+    )
+    const wrapper = await mountDeliveryDetailView()
+
+    await findReplayButton(wrapper)!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unable to replay this delivery')
+  })
+
+  it('offers no replay for a delivery that has not failed', async () => {
+    stubFetchResponse(new Response(JSON.stringify(retryingDelivery)))
+
+    const wrapper = await mountDeliveryDetailView()
+
+    expect(findReplayButton(wrapper)).toBeUndefined()
+  })
+
+  it('hides the replay button from a user who cannot replay', async () => {
+    signInWithGrantedRoles(['ROLE_USER'])
+    stubFetchResponse(new Response(JSON.stringify(failedDelivery)))
+
+    const wrapper = await mountDeliveryDetailView()
+
+    expect(findReplayButton(wrapper)).toBeUndefined()
   })
 })

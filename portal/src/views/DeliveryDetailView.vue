@@ -1,29 +1,58 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { showDelivery, type DeliveryDetail } from '@/api/deliveriesApi'
+import { replayFailedDelivery } from '@/api/eventsApi'
 import { deliveryStatusDisplays } from '@/components/deliveryStatusDisplays'
+import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 
 const props = defineProps<{ uuid: string }>()
 
+const authenticatedUserStore = useAuthenticatedUserStore()
+
 const delivery = ref<DeliveryDetail | null>(null)
 const loadingErrorMessage = ref<string | null>(null)
+const replayErrorMessage = ref<string | null>(null)
 
 function formatDateTime(dateTime: string): string {
   return new Date(dateTime).toLocaleString()
 }
 
-onMounted(async () => {
+async function loadDelivery(): Promise<void> {
   try {
     delivery.value = await showDelivery(props.uuid)
   } catch {
     loadingErrorMessage.value = 'Unable to load this delivery, please try again later.'
   }
-})
+}
+
+async function replayDeliveryThenReload(): Promise<void> {
+  replayErrorMessage.value = null
+
+  try {
+    await replayFailedDelivery(props.uuid)
+  } catch {
+    replayErrorMessage.value = 'Unable to replay this delivery, please try again later.'
+    return
+  }
+
+  await loadDelivery()
+}
+
+onMounted(loadDelivery)
 </script>
 
 <template>
   <v-container>
     <h1 class="text-h4 mb-4">Delivery</h1>
+
+    <v-alert
+      v-if="replayErrorMessage"
+      type="error"
+      class="mb-4"
+      closable
+      :text="replayErrorMessage"
+      @click:close="replayErrorMessage = null"
+    />
 
     <v-alert v-if="loadingErrorMessage" type="error" :text="loadingErrorMessage" />
     <v-progress-linear v-else-if="!delivery" indeterminate />
@@ -61,6 +90,15 @@ onMounted(async () => {
           </tr>
         </tbody>
       </v-table>
+
+      <v-btn
+        v-if="authenticatedUserStore.canReplayEvents && delivery.status === 'failed'"
+        class="mb-6"
+        prepend-icon="mdi-replay"
+        @click="replayDeliveryThenReload"
+      >
+        Replay
+      </v-btn>
 
       <h2 class="text-h6 mb-2">Attempts</h2>
       <p v-if="delivery.attempts.length === 0" class="text-medium-emphasis">No attempt yet.</p>
