@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\Dto\MappingCreationRequest;
+use App\Dto\MappingModificationRequest;
 use App\Entity\Mapping;
 use App\Repository\EventTypeRepository;
 use App\Repository\MappingRepository;
@@ -71,6 +72,26 @@ final class MappingManagementController extends AbstractController
         $entityManager->flush();
 
         return $this->json($this->describeMapping($mapping), Response::HTTP_CREATED);
+    }
+
+    #[Route('/api/mappings/{id}', name: 'api_mappings_modify', requirements: ['id' => '\d+'], methods: ['PATCH'])]
+    #[IsGranted('ROLE_CONFIGURATION_MANAGE')]
+    public function modifyMapping(
+        Mapping $mapping,
+        #[MapRequestPayload] MappingModificationRequest $mappingModificationRequest,
+        EntityManagerInterface $entityManager,
+    ): JsonResponse {
+        if (null !== $mappingModificationRequest->maxAttempts) {
+            $mapping->setMaxAttempts($mappingModificationRequest->maxAttempts);
+        }
+
+        if (null !== $mappingModificationRequest->enabled) {
+            $mapping->setEnabled($mappingModificationRequest->enabled);
+        }
+
+        $entityManager->flush();
+
+        return $this->json($this->describeMapping($mapping));
     }
 
     /**

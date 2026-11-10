@@ -221,4 +221,111 @@ final class MappingManagementControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
         self::assertSame(0, static::getContainer()->get(MappingRepository::class)->count());
     }
+
+    public function testAdminChangesTheMaxAttemptsOfAMapping(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret');
+        $mapping = $this->createMapping($target);
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/mappings/'.$mapping->getId(), ['maxAttempts' => 8]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(8, json_decode($this->client->getResponse()->getContent(), true)['maxAttempts']);
+        self::assertSame(8, static::getContainer()->get(MappingRepository::class)->find($mapping->getId())->getMaxAttempts());
+    }
+
+    public function testAdminDisablesAMapping(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret');
+        $mapping = $this->createMapping($target);
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/mappings/'.$mapping->getId(), ['enabled' => false]);
+
+        self::assertResponseIsSuccessful();
+        self::assertFalse(static::getContainer()->get(MappingRepository::class)->find($mapping->getId())->isEnabled());
+    }
+
+    public function testAdminReenablesADisabledMapping(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret');
+        $mapping = $this->createMapping($target, isEnabled: false);
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/mappings/'.$mapping->getId(), ['enabled' => true]);
+
+        self::assertTrue(json_decode($this->client->getResponse()->getContent(), true)['enabled']);
+    }
+
+    public function testMappingFieldsNotSentAreLeftUnchanged(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret');
+        $mapping = $this->createMapping($target, maxAttempts: 3, isEnabled: false);
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/mappings/'.$mapping->getId(), ['maxAttempts' => 8]);
+
+        self::assertFalse(json_decode($this->client->getResponse()->getContent(), true)['enabled']);
+    }
+
+    public function testRoutingOfAMappingCannotBeChanged(): void
+    {
+        $source = $this->createSource('emitter-app', 'emitter-shared-secret');
+        $target = $this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret');
+        $otherTarget = $this->createTarget('Other receiver', 'https://other.example.test', 'other-secret');
+        $mapping = $this->createMapping($target, $source);
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/mappings/'.$mapping->getId(), [
+            'sourceId' => null,
+            'targetId' => $otherTarget->getId(),
+        ]);
+
+        $modifiedMapping = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame($source->getId(), $modifiedMapping['source']['id']);
+        self::assertSame($target->getId(), $modifiedMapping['target']['id']);
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function outOfRangeMaxAttempts(): iterable
+    {
+        yield 'zero' => [0];
+        yield 'above ten' => [11];
+    }
+
+    #[DataProvider('outOfRangeMaxAttempts')]
+    public function testOutOfRangeMaxAttemptsIsRejectedOnModification(int $maxAttempts): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret');
+        $mapping = $this->createMapping($target);
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/mappings/'.$mapping->getId(), ['maxAttempts' => $maxAttempts]);
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public function testModifyingAnUnknownMappingIsNotFound(): void
+    {
+        $this->client->loginUser($this->createUser('admin', ['ROLE_ADMIN']));
+
+        $this->client->jsonRequest('PATCH', '/api/mappings/999999', ['enabled' => false]);
+
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    public function testDemoCannotModifyAMapping(): void
+    {
+        $target = $this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret');
+        $mapping = $this->createMapping($target);
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->jsonRequest('PATCH', '/api/mappings/'.$mapping->getId(), ['enabled' => false]);
+
+        self::assertResponseStatusCodeSame(403);
+        self::assertTrue(static::getContainer()->get(MappingRepository::class)->find($mapping->getId())->isEnabled());
+    }
 }
