@@ -142,6 +142,30 @@ final class AttemptDeliveryHandlerTest extends KernelTestCase
         self::assertNull($recordedAttempt->getResponseCode());
     }
 
+    public function testFailingTargetDoesNotBlockTheOtherTargetsOfTheEvent(): void
+    {
+        $eventIn = new EventIn($this->createSource('emitter-app', 'emitter-shared-secret'), 'evt_1', 'record.created', ['field' => 'value']);
+        $deliveryToFailingTarget = new Delivery($eventIn, $this->createTarget('Failing receiver', 'https://failing.example.test', 'target-shared-secret'), 5);
+        $deliveryToHealthyTarget = new Delivery($eventIn, $this->createTarget('Healthy receiver', 'https://healthy.example.test', 'target-shared-secret'), 5);
+        $entityManager = static::getContainer()->get(EntityManagerInterface::class);
+        $entityManager->persist($eventIn);
+        $entityManager->persist($deliveryToFailingTarget);
+        $entityManager->persist($deliveryToHealthyTarget);
+        $entityManager->flush();
+        static::getContainer()->set('http_client', new MockHttpClient(
+            static fn (string $method, string $url): MockResponse => str_contains($url, 'failing')
+                ? new MockResponse('', ['http_code' => 500])
+                : new MockResponse('', ['http_code' => 200]),
+        ));
+
+        $attemptDeliveryHandler = static::getContainer()->get(AttemptDeliveryHandler::class);
+        $attemptDeliveryHandler(new AttemptDelivery($deliveryToFailingTarget->getUuid()));
+        $attemptDeliveryHandler(new AttemptDelivery($deliveryToHealthyTarget->getUuid()));
+
+        self::assertSame(DeliveryStatus::Retrying, $deliveryToFailingTarget->getStatus());
+        self::assertSame(DeliveryStatus::Delivered, $deliveryToHealthyTarget->getStatus());
+    }
+
     private function getAsyncTransport(): InMemoryTransport
     {
         return static::getContainer()->get('messenger.transport.async');
