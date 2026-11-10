@@ -15,6 +15,10 @@ export const useAuthenticatedUserStore = defineStore('authenticatedUser', () => 
     () => authenticatedUser.value?.grantedRoles.includes('ROLE_CONFIGURATION_MANAGE') ?? false,
   )
 
+  const canReplayEvents = computed(
+    () => authenticatedUser.value?.grantedRoles.includes('ROLE_EVENT_REPLAY') ?? false,
+  )
+
   async function logIn(login: string, password: string): Promise<void> {
     authenticatedUser.value = await requestLogIn(login, password)
     hasCheckedSession.value = true
@@ -38,6 +42,7 @@ export const useAuthenticatedUserStore = defineStore('authenticatedUser', () => 
     authenticatedUser,
     hasCheckedSession,
     canManageConfiguration,
+    canReplayEvents,
     logIn,
     logOut,
     restoreSessionOnce,
