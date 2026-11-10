@@ -30,6 +30,12 @@ final class RoleHierarchyTest extends KernelTestCase
         self::assertNotContains('ROLE_CONFIGURATION_MANAGE', $this->findRolesReachableFrom('ROLE_DEMO'));
     }
 
+    public function testDemoAndAdminCanReplayEvents(): void
+    {
+        self::assertContains('ROLE_EVENT_REPLAY', $this->findRolesReachableFrom('ROLE_DEMO'));
+        self::assertContains('ROLE_EVENT_REPLAY', $this->findRolesReachableFrom('ROLE_ADMIN'));
+    }
+
     /**
      * @return list<string>
      */
