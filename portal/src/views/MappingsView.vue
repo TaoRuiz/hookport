@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { listMappings, type Mapping } from '@/api/mappingsApi'
+import { changeMappingEnabled, listMappings, type Mapping } from '@/api/mappingsApi'
 import MappingCreationDialog from '@/components/MappingCreationDialog.vue'
+import MappingMaxAttemptsDialog from '@/components/MappingMaxAttemptsDialog.vue'
 import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 
 const authenticatedUserStore = useAuthenticatedUserStore()
@@ -10,6 +11,7 @@ const mappings = ref<Mapping[]>([])
 const isShowingDisabledMappings = ref(false)
 const isLoading = ref(true)
 const loadingErrorMessage = ref<string | null>(null)
+const statusChangeErrorMessage = ref<string | null>(null)
 
 const visibleMappings = computed(() =>
   isShowingDisabledMappings.value
@@ -21,6 +23,23 @@ function addCreatedMappingToList(createdMapping: Mapping): void {
   mappings.value = [...mappings.value, createdMapping].sort(
     (first, second) => first.target.name.localeCompare(second.target.name) || first.id - second.id,
   )
+}
+
+function replaceMappingInList(changedMapping: Mapping): void {
+  mappings.value = mappings.value.map((listedMapping) =>
+    listedMapping.id === changedMapping.id ? changedMapping : listedMapping,
+  )
+}
+
+async function switchMappingEnabled(mapping: Mapping, enabled: boolean): Promise<void> {
+  statusChangeErrorMessage.value = null
+
+  try {
+    replaceMappingInList(await changeMappingEnabled(mapping.id, enabled))
+  } catch {
+    statusChangeErrorMessage.value =
+      'Unable to change the status of the mapping, please try again later.'
+  }
 }
 
 onMounted(async () => {
@@ -52,6 +71,15 @@ onMounted(async () => {
       hide-details
     />
 
+    <v-alert
+      v-if="statusChangeErrorMessage"
+      type="error"
+      class="mb-4"
+      closable
+      :text="statusChangeErrorMessage"
+      @click:close="statusChangeErrorMessage = null"
+    />
+
     <v-alert v-if="loadingErrorMessage" type="error" :text="loadingErrorMessage" />
     <v-progress-linear v-else-if="isLoading" indeterminate />
     <p v-else-if="visibleMappings.length === 0" class="text-medium-emphasis">No mapping to show.</p>
@@ -64,6 +92,7 @@ onMounted(async () => {
           <th>Target</th>
           <th>Max attempts</th>
           <th>Status</th>
+          <th v-if="authenticatedUserStore.canManageConfiguration">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -82,6 +111,19 @@ onMounted(async () => {
             <v-chip :color="mapping.enabled ? 'success' : 'grey'" size="small">
               {{ mapping.enabled ? 'Enabled' : 'Disabled' }}
             </v-chip>
+          </td>
+          <td v-if="authenticatedUserStore.canManageConfiguration">
+            <div class="d-flex align-center ga-2">
+              <v-switch
+                :model-value="mapping.enabled"
+                aria-label="Enable mapping"
+                color="success"
+                density="compact"
+                hide-details
+                @update:model-value="switchMappingEnabled(mapping, Boolean($event))"
+              />
+              <MappingMaxAttemptsDialog :mapping="mapping" @changed="replaceMappingInList" />
+            </div>
           </td>
         </tr>
       </tbody>

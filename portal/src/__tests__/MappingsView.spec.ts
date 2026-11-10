@@ -89,6 +89,14 @@ async function chooseInSelect(selectLabel: string, optionTitle: string) {
   await flushPromises()
 }
 
+async function clickRowButton(buttonText: string) {
+  await page
+    .findAll('tbody button')
+    .find((button) => button.text() === buttonText)!
+    .trigger('click')
+  await flushPromises()
+}
+
 async function submitMappingCreation() {
   await page.find('.v-dialog form').trigger('submit')
   await flushPromises()
@@ -245,5 +253,96 @@ describe('MappingsView', () => {
     await submitMappingCreation()
 
     expect(page.text()).toContain('This mapping already exists.')
+  })
+
+  it('hides status and max attempts actions from a user who cannot manage configuration', async () => {
+    stubFetchResponses(jsonResponse(200, [specificMapping]))
+
+    const wrapper = await mountMappingsView()
+
+    expect(wrapper.find('tbody').text()).not.toContain('Max attempts')
+    expect(wrapper.find('tbody input[type="checkbox"]').exists()).toBe(false)
+  })
+
+  it('disables a mapping from its row', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(
+      jsonResponse(200, [specificMapping]),
+      jsonResponse(200, { ...specificMapping, enabled: false }),
+    )
+    const wrapper = await mountMappingsView()
+    await wrapper.find('input[aria-label="Show disabled mappings"]').setValue(true)
+
+    await wrapper.find('tbody input[type="checkbox"]').setValue(false)
+    await flushPromises()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/mappings/1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    })
+    expect(wrapper.find('tbody').text()).toContain('Disabled')
+  })
+
+  it('keeps the mapping status and explains when the status change fails', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, [specificMapping]), jsonResponse(500, {}))
+    const wrapper = await mountMappingsView()
+
+    await wrapper.find('tbody input[type="checkbox"]').setValue(false)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unable to change the status of the mapping')
+    expect(wrapper.find('tbody').text()).toContain('Enabled')
+  })
+
+  it('changes the max attempts of a mapping from its row', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(
+      jsonResponse(200, [specificMapping]),
+      jsonResponse(200, { ...specificMapping, maxAttempts: 8 }),
+    )
+    const wrapper = await mountMappingsView()
+
+    await clickRowButton('Max attempts')
+    await page.find('.v-dialog input[type="number"]').setValue('8')
+    await flushPromises()
+    await page.find('.v-dialog form').trigger('submit')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/mappings/1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ maxAttempts: 8 }),
+    })
+    expect(wrapper.findAll('tbody tr td').map((cell) => cell.text())).toContain('8')
+  })
+
+  it('does not send max attempts out of range', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, [specificMapping]))
+    await mountMappingsView()
+
+    await clickRowButton('Max attempts')
+    await page.find('.v-dialog input[type="number"]').setValue('11')
+    await flushPromises()
+    await page.find('.v-dialog form').trigger('submit')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(page.text()).toContain('Between 1 and 10 attempts.')
+  })
+
+  it('keeps the dialog open and explains when the max attempts change fails', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, [specificMapping]), jsonResponse(500, {}))
+    const wrapper = await mountMappingsView()
+
+    await clickRowButton('Max attempts')
+    await page.find('.v-dialog form').trigger('submit')
+    await flushPromises()
+
+    expect(page.text()).toContain('Unable to change the max attempts')
+    expect(wrapper.findAll('tbody tr td').map((cell) => cell.text())).toContain('3')
   })
 })

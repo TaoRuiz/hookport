@@ -65,3 +65,34 @@ export async function createMapping(mappingCreation: MappingCreation): Promise<M
 
   return (await response.json()) as Mapping
 }
+
+export async function changeMappingEnabled(mappingId: number, enabled: boolean): Promise<Mapping> {
+  const response = await fetch(`/api/mappings/${mappingId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Changing the mapping status failed with HTTP ${response.status}.`)
+  }
+
+  return (await response.json()) as Mapping
+}
+
+export async function changeMappingMaxAttempts(
+  mappingId: number,
+  maxAttempts: number,
+): Promise<Mapping> {
+  const response = await fetch(`/api/mappings/${mappingId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ maxAttempts }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Changing the mapping max attempts failed with HTTP ${response.status}.`)
+  }
+
+  return (await response.json()) as Mapping
+}
