@@ -2,6 +2,7 @@
 
 namespace App\Tests\Controller;
 
+use App\Entity\Delivery;
 use App\Repository\DeliveryRepository;
 use App\Repository\EventInRepository;
 use App\Tests\CreatesMappings;
@@ -10,6 +11,8 @@ use App\Tests\CreatesTargets;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 final class IngestEventControllerTest extends WebTestCase
 {
@@ -57,6 +60,32 @@ final class IngestEventControllerTest extends WebTestCase
         self::assertCount(1, $deliveries);
         self::assertSame('evt_1', $deliveries[0]->getEventIn()->getExternalId());
         self::assertSame('Receiver', $deliveries[0]->getTarget()->getName());
+    }
+
+    public function testOneDeliveryAttemptIsQueuedPerCreatedDelivery(): void
+    {
+        $this->createMapping($this->createTarget('First receiver', 'https://first.example.test', 'target-shared-secret'));
+        $this->createMapping($this->createTarget('Second receiver', 'https://second.example.test', 'target-shared-secret'));
+
+        $this->postSignedEvent('{"type":"record.created","id":"evt_1","payload":{"field":"value"}}');
+
+        $deliveryUuids = array_map(
+            static fn (Delivery $delivery): string => $delivery->getUuid()->toRfc4122(),
+            static::getContainer()->get(DeliveryRepository::class)->findAll(),
+        );
+        $queuedDeliveryUuids = array_map(
+            static fn (Envelope $envelope): string => $envelope->getMessage()->deliveryUuid->toRfc4122(),
+            $this->getAsyncTransport()->getSent(),
+        );
+        self::assertCount(2, $queuedDeliveryUuids);
+        self::assertEqualsCanonicalizing($deliveryUuids, $queuedDeliveryUuids);
+    }
+
+    public function testEventWithoutMatchingMappingQueuesNoDeliveryAttempt(): void
+    {
+        $this->postSignedEvent('{"type":"record.unknown","id":"evt_1","payload":{}}');
+
+        self::assertCount(0, $this->getAsyncTransport()->getSent());
     }
 
     public function testEventWithoutMatchingMappingIsStoredAndAcceptedWithoutDelivery(): void
@@ -127,6 +156,11 @@ final class IngestEventControllerTest extends WebTestCase
         $this->postSignedEvent($rawBody);
 
         self::assertResponseStatusCodeSame(422);
+    }
+
+    private function getAsyncTransport(): InMemoryTransport
+    {
+        return static::getContainer()->get('messenger.transport.async');
     }
 
     private function postSignedEvent(
