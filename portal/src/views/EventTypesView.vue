@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { listEventTypes, type EventType } from '@/api/eventTypesApi'
+import EventTypeCreationDialog from '@/components/EventTypeCreationDialog.vue'
+import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
+
+const authenticatedUserStore = useAuthenticatedUserStore()
 
 const eventTypes = ref<EventType[]>([])
 const isShowingDisabledEventTypes = ref(false)
@@ -12,6 +16,12 @@ const visibleEventTypes = computed(() =>
     ? eventTypes.value
     : eventTypes.value.filter((eventType) => eventType.enabled),
 )
+
+function addCreatedEventTypeToList(createdEventType: EventType): void {
+  eventTypes.value = [...eventTypes.value, createdEventType].sort((first, second) =>
+    first.label.localeCompare(second.label),
+  )
+}
 
 onMounted(async () => {
   try {
@@ -26,7 +36,14 @@ onMounted(async () => {
 
 <template>
   <v-container>
-    <h1 class="text-h4 mb-4">Event types</h1>
+    <div class="d-flex align-center mb-4">
+      <h1 class="text-h4">Event types</h1>
+      <v-spacer />
+      <EventTypeCreationDialog
+        v-if="authenticatedUserStore.canManageConfiguration"
+        @created="addCreatedEventTypeToList"
+      />
+    </div>
 
     <v-switch
       v-model="isShowingDisabledEventTypes"
