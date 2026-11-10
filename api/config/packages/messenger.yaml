@@ -1,0 +1,8 @@
+framework:
+    messenger:
+        transports:
+            # Retries are per delivery (max_attempts), handled by the delivery handler, not by Messenger.
+            async:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                retry_strategy:
+                    max_retries: 0
