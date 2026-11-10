@@ -2,15 +2,20 @@
 
 namespace App\Tests\Controller;
 
+use App\Repository\DeliveryRepository;
 use App\Repository\EventInRepository;
+use App\Tests\CreatesMappings;
 use App\Tests\CreatesSources;
+use App\Tests\CreatesTargets;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 final class IngestEventControllerTest extends WebTestCase
 {
+    use CreatesMappings;
     use CreatesSources;
+    use CreatesTargets;
 
     private const string SOURCE_SLUG = 'emitter-app';
     private const string SOURCE_SECRET = 'emitter-shared-secret';
@@ -39,6 +44,39 @@ final class IngestEventControllerTest extends WebTestCase
         self::assertSame(self::SOURCE_SLUG, $storedEvent->getSource()->getSlug());
         self::assertSame('record.created', $storedEvent->getType());
         self::assertSame(['field' => 'value'], $storedEvent->getPayload());
+    }
+
+    public function testAcceptedEventIsRoutedToItsMatchingTarget(): void
+    {
+        $this->createMapping($this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret'));
+
+        $this->postSignedEvent('{"type":"record.created","id":"evt_1","payload":{"field":"value"}}');
+
+        self::assertResponseStatusCodeSame(202);
+        $deliveries = static::getContainer()->get(DeliveryRepository::class)->findAll();
+        self::assertCount(1, $deliveries);
+        self::assertSame('evt_1', $deliveries[0]->getEventIn()->getExternalId());
+        self::assertSame('Receiver', $deliveries[0]->getTarget()->getName());
+    }
+
+    public function testEventWithoutMatchingMappingIsStoredAndAcceptedWithoutDelivery(): void
+    {
+        $this->postSignedEvent('{"type":"record.unknown","id":"evt_1","payload":{}}');
+
+        self::assertResponseStatusCodeSame(202);
+        self::assertNotNull(static::getContainer()->get(EventInRepository::class)->findOneBy(['externalId' => 'evt_1']));
+        self::assertSame(0, static::getContainer()->get(DeliveryRepository::class)->count());
+    }
+
+    public function testDuplicateEventCreatesNoNewDelivery(): void
+    {
+        $this->createMapping($this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret'));
+
+        $this->postSignedEvent('{"type":"record.created","id":"evt_1","payload":{}}');
+        $this->postSignedEvent('{"type":"record.created","id":"evt_1","payload":{}}');
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, static::getContainer()->get(DeliveryRepository::class)->count());
     }
 
     public function testDuplicateEventIsIgnored(): void
