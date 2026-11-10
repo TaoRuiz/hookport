@@ -126,6 +126,22 @@ final class AttemptDeliveryHandlerTest extends KernelTestCase
         self::assertCount(0, $this->getAsyncTransport()->getSent());
     }
 
+    public function testDeliveryToADisabledTargetFailsWithoutSendingAnything(): void
+    {
+        $delivery = $this->createPendingDelivery(isTargetEnabled: false);
+        $httpClient = new MockHttpClient();
+        static::getContainer()->set('http_client', $httpClient);
+
+        static::getContainer()->get(AttemptDeliveryHandler::class)(new AttemptDelivery($delivery->getUuid()));
+
+        self::assertSame(0, $httpClient->getRequestsCount());
+        self::assertSame(DeliveryStatus::Failed, $delivery->getStatus());
+        self::assertCount(0, $this->getAsyncTransport()->getSent());
+        $recordedAttempt = static::getContainer()->get(DeliveryAttemptRepository::class)->findOneBy(['delivery' => $delivery]);
+        self::assertSame('Target disabled', $recordedAttempt->getError());
+        self::assertNull($recordedAttempt->getResponseCode());
+    }
+
     private function getAsyncTransport(): InMemoryTransport
     {
         return static::getContainer()->get('messenger.transport.async');
@@ -138,10 +154,10 @@ final class AttemptDeliveryHandlerTest extends KernelTestCase
         static::getContainer()->get(AttemptDeliveryHandler::class)(new AttemptDelivery($delivery->getUuid()));
     }
 
-    private function createPendingDelivery(int $maxAttempts = 5, int $attemptsAlreadyMade = 0): Delivery
+    private function createPendingDelivery(int $maxAttempts = 5, int $attemptsAlreadyMade = 0, bool $isTargetEnabled = true): Delivery
     {
         $eventIn = new EventIn($this->createSource('emitter-app', 'emitter-shared-secret'), 'evt_1', 'record.created', ['field' => 'value']);
-        $delivery = new Delivery($eventIn, $this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret'), $maxAttempts);
+        $delivery = new Delivery($eventIn, $this->createTarget('Receiver', 'https://receiver.example.test', 'target-shared-secret', $isTargetEnabled), $maxAttempts);
         $delivery->setAttemptsCount($attemptsAlreadyMade);
 
         $entityManager = static::getContainer()->get(EntityManagerInterface::class);

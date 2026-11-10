@@ -2,6 +2,7 @@
 
 namespace App\MessageHandler;
 
+use App\Delivery\DeliveryResult;
 use App\Delivery\DeliveryTransport;
 use App\Entity\Delivery;
 use App\Entity\DeliveryAttempt;
@@ -19,6 +20,7 @@ final readonly class AttemptDeliveryHandler
 {
     /** Delay before the next attempt, by attempt number; the last one repeats. */
     private const array BACKOFF_DELAYS_IN_SECONDS = [60, 300, 1800, 7200];
+    private const string TARGET_DISABLED_REASON = 'Target disabled';
 
     public function __construct(
         private DeliveryRepository $deliveryRepository,
@@ -38,7 +40,9 @@ final readonly class AttemptDeliveryHandler
         $attemptNumber = $delivery->getAttemptsCount() + 1;
         $sentAt = new \DateTimeImmutable();
         $startedAtInNanoseconds = hrtime(true);
-        $deliveryResult = $this->deliveryTransport->deliver($delivery->getEventIn(), $delivery->getTarget(), $attemptNumber);
+        $deliveryResult = $delivery->getTarget()->isEnabled()
+            ? $this->deliveryTransport->deliver($delivery->getEventIn(), $delivery->getTarget(), $attemptNumber)
+            : new DeliveryResult(DeliveryOutcome::PermanentFailure, failureReason: self::TARGET_DISABLED_REASON);
         $durationInMilliseconds = intdiv(hrtime(true) - $startedAtInNanoseconds, 1_000_000);
 
         $this->entityManager->persist(new DeliveryAttempt(
