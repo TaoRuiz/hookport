@@ -160,4 +160,90 @@ describe('EventTypesView', () => {
 
     expect(page.text()).toContain('This slug is already used.')
   })
+
+  it('hides status and rename actions from a user who cannot manage configuration', async () => {
+    stubFetchResponses(jsonResponse(200, [enabledEventType]))
+
+    const wrapper = await mountEventTypesView()
+
+    expect(wrapper.find('tbody').text()).not.toContain('Rename')
+    expect(wrapper.find('tbody input[type="checkbox"]').exists()).toBe(false)
+  })
+
+  it('disables an event type from its row', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(
+      jsonResponse(200, [enabledEventType]),
+      jsonResponse(200, { ...enabledEventType, enabled: false }),
+    )
+    const wrapper = await mountEventTypesView()
+    await wrapper.find('input[aria-label="Show disabled event types"]').setValue(true)
+
+    await wrapper.find('tbody input[type="checkbox"]').setValue(false)
+    await flushPromises()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/event-types/1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: false }),
+    })
+    expect(wrapper.find('tbody').text()).toContain('Disabled')
+  })
+
+  it('keeps the event type status and explains when the status change fails', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, [enabledEventType]), jsonResponse(500, {}))
+    const wrapper = await mountEventTypesView()
+
+    await wrapper.find('tbody input[type="checkbox"]').setValue(false)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unable to change the status of record.created')
+    expect(wrapper.find('tbody').text()).toContain('Enabled')
+  })
+
+  it('renames an event type from its row and keeps the list sorted by label', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    const otherEventType = { id: 3, slug: 'record.updated', label: 'Record updated', enabled: true }
+    stubFetchResponses(
+      jsonResponse(200, [enabledEventType, otherEventType]),
+      jsonResponse(200, { ...enabledEventType, label: 'Zulu record' }),
+    )
+    const wrapper = await mountEventTypesView()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Rename')!
+      .trigger('click')
+    await flushPromises()
+    await page.find('.v-dialog form input').setValue('Zulu record')
+    await flushPromises()
+    await page.find('.v-dialog form').trigger('submit')
+    await flushPromises()
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/event-types/1', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: 'Zulu record' }),
+    })
+    const labelCells = wrapper.findAll('tbody tr td:first-child').map((cell) => cell.text())
+    expect(labelCells).toEqual(['Record updated', 'Zulu record'])
+  })
+
+  it('keeps the dialog open and explains when the rename fails', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(jsonResponse(200, [enabledEventType]), jsonResponse(500, {}))
+    const wrapper = await mountEventTypesView()
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Rename')!
+      .trigger('click')
+    await flushPromises()
+    await page.find('.v-dialog form').trigger('submit')
+    await flushPromises()
+
+    expect(page.text()).toContain('Unable to rename the event type')
+    expect(wrapper.find('tbody').text()).toContain('Record created')
+  })
 })

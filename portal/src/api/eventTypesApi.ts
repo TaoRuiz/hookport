@@ -38,3 +38,34 @@ export async function createEventType(slug: string, label: string): Promise<Even
 
   return (await response.json()) as EventType
 }
+
+export async function changeEventTypeEnabled(
+  eventTypeId: number,
+  enabled: boolean,
+): Promise<EventType> {
+  const response = await fetch(`/api/event-types/${eventTypeId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Changing the event type status failed with HTTP ${response.status}.`)
+  }
+
+  return (await response.json()) as EventType
+}
+
+export async function relabelEventType(eventTypeId: number, label: string): Promise<EventType> {
+  const response = await fetch(`/api/event-types/${eventTypeId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Renaming the event type failed with HTTP ${response.status}.`)
+  }
+
+  return (await response.json()) as EventType
+}
