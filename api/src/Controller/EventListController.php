@@ -2,7 +2,7 @@
 
 namespace App\Controller;
 
-use App\Entity\EventIn;
+use App\Enum\EventState;
 use App\Repository\EventInRepository;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -14,14 +14,19 @@ final class EventListController extends AbstractController
     public function listEvents(EventInRepository $eventInRepository): JsonResponse
     {
         return $this->json(array_map(
-            static fn (EventIn $eventIn): array => [
-                'uuid' => $eventIn->getUuid(),
-                'type' => $eventIn->getType(),
-                'source' => ['id' => $eventIn->getSource()->getId(), 'slug' => $eventIn->getSource()->getSlug()],
-                'externalId' => $eventIn->getExternalId(),
-                'receivedAt' => $eventIn->getReceivedAt(),
+            static fn (array $eventRow): array => [
+                'uuid' => $eventRow[0]->getUuid(),
+                'type' => $eventRow[0]->getType(),
+                'source' => ['id' => $eventRow[0]->getSource()->getId(), 'slug' => $eventRow[0]->getSource()->getSlug()],
+                'externalId' => $eventRow[0]->getExternalId(),
+                'receivedAt' => $eventRow[0]->getReceivedAt(),
+                'state' => EventState::fromDeliveryCounts(
+                    (int) $eventRow['deliveriesCount'],
+                    (int) $eventRow['failedDeliveriesCount'],
+                    (int) $eventRow['ongoingDeliveriesCount'],
+                ),
             ],
-            $eventInRepository->findAllWithSourceNewestFirst(),
+            $eventInRepository->findAllWithSourceAndDeliveryCountsNewestFirst(),
         ));
     }
 }
