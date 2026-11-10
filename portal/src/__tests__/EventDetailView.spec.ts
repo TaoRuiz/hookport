@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { flushPromises, mount, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createVuetify } from 'vuetify'
 import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
@@ -65,7 +65,7 @@ async function waitForNextRefresh(): Promise<void> {
 async function mountEventDetailView() {
   mountedWrapper = mount(EventDetailView, {
     props: { uuid: eventUuid },
-    global: { plugins: [createVuetify()] },
+    global: { plugins: [createVuetify()], stubs: { RouterLink: RouterLinkStub } },
   })
   await flushPromises()
 
@@ -219,5 +219,16 @@ describe('EventDetailView', () => {
     await waitForNextRefresh()
 
     expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('links each delivery to its detail page', async () => {
+    stubFetchResponse(new Response(JSON.stringify(routedEvent)))
+
+    const wrapper = await mountEventDetailView()
+
+    expect(wrapper.findComponent(RouterLinkStub).props('to')).toEqual({
+      name: 'delivery-detail',
+      params: { uuid: failedDeliveryUuid },
+    })
   })
 })

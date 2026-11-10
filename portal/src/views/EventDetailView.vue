@@ -4,23 +4,16 @@ import {
   replayFailedDelivery,
   replayUnroutedEvent,
   showEvent,
-  type DeliveryStatus,
   type EventDelivery,
   type ReceivedEventDetail,
 } from '@/api/eventsApi'
+import { deliveryStatusDisplays } from '@/components/deliveryStatusDisplays'
 import { eventStateDisplays } from '@/components/eventStateDisplays'
 import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 
 const props = defineProps<{ uuid: string }>()
 
 const authenticatedUserStore = useAuthenticatedUserStore()
-
-const deliveryStatusDisplays: Record<DeliveryStatus, { label: string; color: string }> = {
-  pending: { label: 'Pending', color: 'grey' },
-  retrying: { label: 'Retrying', color: 'warning' },
-  delivered: { label: 'Delivered', color: 'success' },
-  failed: { label: 'Failed', color: 'error' },
-}
 
 const refreshDelayInMilliseconds = 5000
 
@@ -175,7 +168,11 @@ onUnmounted(() => {
         </thead>
         <tbody>
           <tr v-for="delivery in receivedEvent.deliveries" :key="delivery.uuid">
-            <td>{{ delivery.target.name }}</td>
+            <td>
+              <router-link :to="{ name: 'delivery-detail', params: { uuid: delivery.uuid } }">
+                {{ delivery.target.name }}
+              </router-link>
+            </td>
             <td>
               <v-chip :color="deliveryStatusDisplays[delivery.status].color" size="small">
                 {{ deliveryStatusDisplays[delivery.status].label }}
