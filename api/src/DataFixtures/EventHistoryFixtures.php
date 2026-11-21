@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Demo\DataFixtures;
+namespace App\DataFixtures;
 
 use App\Delivery\DeliveryResult;
 use App\Entity\Delivery;

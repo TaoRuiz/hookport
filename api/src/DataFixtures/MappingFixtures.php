@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Demo\DataFixtures;
+namespace App\DataFixtures;
 
 use App\Entity\EventType;
 use App\Entity\Mapping;

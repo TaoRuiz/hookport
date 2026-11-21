@@ -9,7 +9,7 @@ Portfolio project for product-developer roles with an interoperability flavor. P
 - Keep v1 small. Anything under "Out of scope" is NOT built in v1.
 - Every behavior in "Tests" must be covered by an automated test.
 - Portfolio project: the owner must be able to explain every piece in an interview. The `DeliveryTransport` interface is the only abstraction anticipated; everything else is written directly.
-- Generic core: the app serves any business domain. Core code and core tests use domain-neutral names and sample data (source `emitter-app`, type `record.created`, payload `{"field":"value"}`); business words (payment, billing, shop...) appear only under `App\Demo\`.
+- Generic core: the app serves any business domain. Core code and core tests use domain-neutral names and sample data (source `emitter-app`, type `record.created`, payload `{"field":"value"}`); business words (payment, billing, shop...) appear only under `App\Demo\` and in the dev fixtures (`App\DataFixtures\`, dev and test only).
 
 ## Stack
 - PHP 8.5, Symfony 8.1, PostgreSQL via Doctrine ORM (schema changes through migrations only), Docker Compose (PostgreSQL); local dev runs PHP on the host (`php -S localhost:8000 -t public`, `bin/console`, no Symfony CLI), app and worker containers are decided with the deploy theme
