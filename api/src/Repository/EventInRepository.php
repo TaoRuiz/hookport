@@ -19,12 +19,13 @@ class EventInRepository extends ServiceEntityRepository
 
     /**
      * Counts are aggregated in the query so the list never loads every delivery.
+     * A searched text keeps the events whose external id, type or payload contains it, ignoring case.
      *
      * @return list<array{0: EventIn, deliveriesCount: int|string, failedDeliveriesCount: int|string|null, ongoingDeliveriesCount: int|string|null}>
      */
-    public function findAllWithSourceAndDeliveryCountsNewestFirst(): array
+    public function findWithSourceAndDeliveryCountsNewestFirst(?string $searchedText = null): array
     {
-        return $this->createQueryBuilder('eventIn')
+        $queryBuilder = $this->createQueryBuilder('eventIn')
             ->addSelect('source')
             ->addSelect('COUNT(delivery.uuid) AS deliveriesCount')
             ->addSelect('SUM(CASE WHEN delivery.status = :failedStatus THEN 1 ELSE 0 END) AS failedDeliveriesCount')
@@ -36,8 +37,15 @@ class EventInRepository extends ServiceEntityRepository
             // received_at has a one-second precision; uuid v7 is time-ordered and breaks ties.
             ->addOrderBy('eventIn.uuid', 'DESC')
             ->setParameter('failedStatus', DeliveryStatus::Failed->value)
-            ->setParameter('ongoingStatuses', [DeliveryStatus::Pending->value, DeliveryStatus::Retrying->value])
-            ->getQuery()
-            ->getResult();
+            ->setParameter('ongoingStatuses', [DeliveryStatus::Pending->value, DeliveryStatus::Retrying->value]);
+
+        if (null !== $searchedText && '' !== trim($searchedText)) {
+            $queryBuilder
+                ->andWhere('LOWER(eventIn.externalId) LIKE :searchPattern OR LOWER(eventIn.type) LIKE :searchPattern OR LOWER(JSONB_AS_TEXT(eventIn.payload)) LIKE :searchPattern')
+                // Escapes LIKE wildcards so "%" or "_" typed by the user are matched literally.
+                ->setParameter('searchPattern', '%'.addcslashes(mb_strtolower(trim($searchedText)), '%_\\').'%');
+        }
+
+        return $queryBuilder->getQuery()->getResult();
     }
 }
