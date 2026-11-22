@@ -32,6 +32,13 @@ const enabledTarget = {
   config: { url: 'https://receiver.example.test' },
   enabled: true,
 }
+const otherEnabledTarget = {
+  id: 2,
+  name: 'Archive',
+  protocol: 'http',
+  config: { url: 'https://archive.example.test' },
+  enabled: true,
+}
 
 // Dialogs and select menus are teleported to the end of <body>, so the whole page is queried.
 const page = new DOMWrapper(document.body)
@@ -89,6 +96,17 @@ async function chooseInSelect(selectLabel: string, optionTitle: string) {
   await flushPromises()
 }
 
+// A multiple select keeps its menu open after each choice, so it is opened only once.
+async function chooseSeveralInSelect(selectLabel: string, optionTitles: string[]) {
+  await openSelectMenu(selectLabel)
+  for (const optionTitle of optionTitles) {
+    await optionsOfOpenMenu()
+      .find((option) => option.text() === optionTitle)!
+      .trigger('click')
+    await flushPromises()
+  }
+}
+
 async function clickRowButton(buttonText: string) {
   await page
     .findAll('tbody button')
@@ -106,7 +124,7 @@ function stubChoicesThen(...responsesAfterChoices: Response[]): Response[] {
   return [
     jsonResponse(200, [enabledSource, disabledSource]),
     jsonResponse(200, [enabledEventType]),
-    jsonResponse(200, [enabledTarget]),
+    jsonResponse(200, [enabledTarget, otherEnabledTarget]),
     ...responsesAfterChoices,
   ]
 }
@@ -196,7 +214,7 @@ describe('MappingsView', () => {
 
     await chooseInSelect('Source', 'Emitter app')
     await chooseInSelect('Event type', 'record.created')
-    await chooseInSelect('Target', 'Receiver')
+    await chooseInSelect('Targets', 'Receiver')
     await page.find('.v-dialog input[type="number"]').setValue('3')
     await submitMappingCreation()
 
@@ -218,7 +236,7 @@ describe('MappingsView', () => {
     await mountMappingsView()
     await openMappingCreationDialog()
 
-    await chooseInSelect('Target', 'Receiver')
+    await chooseInSelect('Targets', 'Receiver')
     await submitMappingCreation()
 
     expect(fetch).toHaveBeenLastCalledWith('/api/mappings', {
@@ -228,7 +246,7 @@ describe('MappingsView', () => {
     })
   })
 
-  it('does not send a mapping without a target', async () => {
+  it('does not send a mapping without any target', async () => {
     signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
     stubFetchResponses(jsonResponse(200, []), ...stubChoicesThen())
     await mountMappingsView()
@@ -237,7 +255,7 @@ describe('MappingsView', () => {
     await submitMappingCreation()
 
     expect(fetch).toHaveBeenCalledTimes(4)
-    expect(page.text()).toContain('Target is required.')
+    expect(page.text()).toContain('Choose at least one target.')
   })
 
   it('explains when the mapping already exists', async () => {
@@ -249,10 +267,56 @@ describe('MappingsView', () => {
     await mountMappingsView()
     await openMappingCreationDialog()
 
-    await chooseInSelect('Target', 'Receiver')
+    await chooseInSelect('Targets', 'Receiver')
     await submitMappingCreation()
 
-    expect(page.text()).toContain('This mapping already exists.')
+    expect(page.text()).toContain('A mapping already exists for: Receiver.')
+  })
+
+  it('creates one mapping per chosen target', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    const archiveMapping = { ...specificMapping, id: 3, target: { id: 2, name: 'Archive' } }
+    stubFetchResponses(
+      jsonResponse(200, []),
+      ...stubChoicesThen(jsonResponse(201, specificMapping), jsonResponse(201, archiveMapping)),
+    )
+    const wrapper = await mountMappingsView()
+    await openMappingCreationDialog()
+
+    await chooseInSelect('Source', 'Emitter app')
+    await chooseSeveralInSelect('Targets', ['Receiver', 'Archive'])
+    await submitMappingCreation()
+
+    const creationBodies = vi
+      .mocked(fetch)
+      .mock.calls.slice(4)
+      .map(([, init]) => init?.body)
+    expect(creationBodies).toEqual([
+      JSON.stringify({ sourceId: 1, eventTypeId: null, targetId: 1, maxAttempts: 5 }),
+      JSON.stringify({ sourceId: 1, eventTypeId: null, targetId: 2, maxAttempts: 5 }),
+    ])
+    expect(wrapper.find('tbody').text()).toContain('Receiver')
+    expect(wrapper.find('tbody').text()).toContain('Archive')
+  })
+
+  it('keeps the created mappings and explains which targets already had one', async () => {
+    signInWithGrantedRoles(['ROLE_ADMIN', 'ROLE_CONFIGURATION_MANAGE'])
+    stubFetchResponses(
+      jsonResponse(200, []),
+      ...stubChoicesThen(
+        jsonResponse(201, specificMapping),
+        jsonResponse(409, { error: 'This mapping already exists.' }),
+      ),
+    )
+    const wrapper = await mountMappingsView()
+    await openMappingCreationDialog()
+
+    await chooseSeveralInSelect('Targets', ['Receiver', 'Archive'])
+    await submitMappingCreation()
+
+    expect(wrapper.find('tbody').text()).toContain('Receiver')
+    expect(page.find('.v-dialog').text()).toContain('A mapping already exists for: Archive.')
+    expect(page.find('.v-dialog .v-chip').text()).toBe('Archive')
   })
 
   it('hides status and max attempts actions from a user who cannot manage configuration', async () => {
