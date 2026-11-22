@@ -39,6 +39,9 @@ async function logOutAndGoToLogin(): Promise<void> {
         />
       </template>
       <v-spacer />
+      <v-avatar color="primary" size="32" class="mr-2">
+        {{ authenticatedUserStore.authenticatedUser.login.charAt(0).toUpperCase() }}
+      </v-avatar>
       <span class="mr-4">{{ authenticatedUserStore.authenticatedUser.login }}</span>
       <v-btn prepend-icon="mdi-logout" @click="logOutAndGoToLogin">Sign out</v-btn>
     </v-app-bar>

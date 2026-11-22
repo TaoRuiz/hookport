@@ -43,6 +43,12 @@ describe('App', () => {
     expect(wrapper.text()).toContain('Sign out')
   })
 
+  it('shows an avatar with the uppercase initial of the signed-in login', async () => {
+    const wrapper = await mountAppSignedInAsAdmin(router)
+
+    expect(wrapper.find('header .v-avatar').text()).toBe('A')
+  })
+
   it('separates the monitoring pages from the configuration pages in the navigation', async () => {
     const wrapper = await mountAppSignedInAsAdmin(router)
     const navigationText = wrapper.find('nav').text()
