@@ -53,11 +53,10 @@ async function logOutAndGoToLogin(): Promise<void> {
         />
       </template>
       <v-spacer />
-      <v-avatar :color="avatarColor" size="32" class="mr-2">
+      <v-avatar :color="avatarColor" size="32" class="mr-3">
         {{ authenticatedUserStore.authenticatedUser.login.charAt(0).toUpperCase() }}
       </v-avatar>
       <span class="mr-4">{{ authenticatedUserStore.authenticatedUser.login }}</span>
-      <v-btn prepend-icon="mdi-logout" @click="logOutAndGoToLogin">Sign out</v-btn>
     </v-app-bar>
     <v-navigation-drawer
       v-if="authenticatedUserStore.authenticatedUser"
@@ -91,6 +90,25 @@ async function logOutAndGoToLogin(): Promise<void> {
           </v-tooltip>
         </template>
       </v-list>
+      <template #append>
+        <v-divider />
+        <v-list nav density="compact">
+          <v-tooltip
+            text="Sign out"
+            :disabled="!userPreferencesStore.isNavigationCollapsedToIcons"
+            location="end"
+          >
+            <template #activator="{ props: tooltipActivatorProps }">
+              <v-list-item
+                v-bind="tooltipActivatorProps"
+                prepend-icon="mdi-logout"
+                title="Sign out"
+                @click="logOutAndGoToLogin"
+              />
+            </template>
+          </v-tooltip>
+        </v-list>
+      </template>
     </v-navigation-drawer>
     <v-main>
       <router-view />

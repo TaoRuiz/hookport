@@ -120,7 +120,9 @@ describe('App', () => {
     const wrapper = await mountAppSignedInAsAdmin(router)
     stubFetchResponse(204, null)
 
-    const signOutButton = wrapper.findAll('button').find((button) => button.text() === 'Sign out')
+    const signOutButton = wrapper
+      .findAll('nav .v-list-item')
+      .find((listItem) => listItem.text() === 'Sign out')
     await signOutButton!.trigger('click')
     await flushPromises()
 
