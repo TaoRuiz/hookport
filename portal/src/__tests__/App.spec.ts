@@ -51,11 +51,25 @@ describe('App', () => {
     )
   })
 
+  it('collapses the navigation to icons and expands it back', async () => {
+    const wrapper = await mountAppSignedInAsAdmin(router)
+    const toggleButton = wrapper.find('button[aria-label="Collapse or expand the navigation"]')
+
+    await toggleButton.trigger('click')
+    expect(wrapper.find('nav').classes()).toContain('v-navigation-drawer--rail')
+    expect(wrapper.find('nav').text()).not.toContain('Configuration')
+
+    await toggleButton.trigger('click')
+    expect(wrapper.find('nav').classes()).not.toContain('v-navigation-drawer--rail')
+    expect(wrapper.find('nav').text()).toContain('Configuration')
+  })
+
   it('logs out with a POST and goes back to the login page', async () => {
     const wrapper = await mountAppSignedInAsAdmin(router)
     stubFetchResponse(204, null)
 
-    await wrapper.find('button').trigger('click')
+    const signOutButton = wrapper.findAll('button').find((button) => button.text() === 'Sign out')
+    await signOutButton!.trigger('click')
     await flushPromises()
 
     expect(fetch).toHaveBeenCalledWith('/api/logout', { method: 'POST' })
