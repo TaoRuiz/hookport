@@ -8,6 +8,7 @@ import {
   type ReceivedEvent,
 } from '@/api/eventsApi'
 import { listSources, type Source } from '@/api/sourcesApi'
+import { deliveryStatusDisplays } from '@/components/deliveryStatusDisplays'
 import { eventStateDisplays } from '@/components/eventStateDisplays'
 
 const refreshDelayInMilliseconds = 5000
@@ -28,15 +29,12 @@ const receivedFromDate = ref('')
 const receivedToDate = ref('')
 const chosenType = ref<string | null>(null)
 const chosenSourceId = ref<number | null>(null)
-const chosenState = ref<EventState | null>(null)
+const allEventStates = Object.keys(eventStateDisplays) as EventState[]
+const chosenStates = ref<EventState[]>([...allEventStates])
 
 // Disabled sources and event types stay listed: their past events remain in the list.
 const sources = ref<Source[]>([])
 const eventTypes = ref<EventType[]>([])
-const stateChoices = Object.entries(eventStateDisplays).map(([state, display]) => ({
-  state,
-  label: display.label,
-}))
 
 function convertLocalDateToIsoString(localDate: string, daysToAdd = 0): string {
   const midnight = new Date(`${localDate}T00:00:00`)
@@ -54,12 +52,15 @@ const eventListFilters = computed<EventListFilters>(() => ({
     receivedToDate.value === '' ? null : convertLocalDateToIsoString(receivedToDate.value, 1),
   type: chosenType.value,
   sourceId: chosenSourceId.value,
-  state: chosenState.value,
+  // Every state chosen means no state filter.
+  states: chosenStates.value.length === allEventStates.length ? [] : chosenStates.value,
 }))
 
 const hasActiveFilters = computed(() =>
-  Object.values(eventListFilters.value).some(
-    (filterValue) => filterValue !== null && filterValue !== '',
+  Object.values(eventListFilters.value).some((filterValue) =>
+    Array.isArray(filterValue)
+      ? filterValue.length > 0
+      : filterValue !== null && filterValue !== '',
   ),
 )
 
@@ -98,7 +99,7 @@ function applySearch(): void {
   reloadEventsNow()
 }
 
-watch([receivedFromDate, receivedToDate, chosenType, chosenSourceId, chosenState], reloadEventsNow)
+watch([receivedFromDate, receivedToDate, chosenType, chosenSourceId, chosenStates], reloadEventsNow)
 
 // Without the choices, the type and source filters stay empty but the list still works.
 async function loadFilterChoices(): Promise<void> {
@@ -145,7 +146,7 @@ onUnmounted(() => {
       <v-col cols="12" sm="6" md="2">
         <v-text-field v-model="receivedToDate" label="Received to" type="date" hide-details />
       </v-col>
-      <v-col cols="12" sm="4" md="3">
+      <v-col cols="12" sm="6" md="4">
         <v-select
           v-model="chosenType"
           label="Type"
@@ -158,7 +159,7 @@ onUnmounted(() => {
           hide-details
         />
       </v-col>
-      <v-col cols="12" sm="4" md="3">
+      <v-col cols="12" sm="6" md="4">
         <v-select
           v-model="chosenSourceId"
           label="Source"
@@ -171,20 +172,20 @@ onUnmounted(() => {
           hide-details
         />
       </v-col>
-      <v-col cols="12" sm="4" md="2">
-        <v-select
-          v-model="chosenState"
-          label="State"
-          :items="stateChoices"
-          item-title="label"
-          item-value="state"
-          placeholder="Any state"
-          persistent-placeholder
-          clearable
-          hide-details
-        />
-      </v-col>
     </v-row>
+
+    <!-- Mandatory: at least one state stays chosen, so the list never filters out everything. -->
+    <v-chip-group v-model="chosenStates" class="mb-4" aria-label="States" multiple mandatory filter>
+      <v-chip
+        v-for="eventState in allEventStates"
+        :key="eventState"
+        :value="eventState"
+        :color="eventStateDisplays[eventState].color"
+        variant="outlined"
+      >
+        {{ eventStateDisplays[eventState].label }}
+      </v-chip>
+    </v-chip-group>
 
     <v-alert v-if="loadingErrorMessage" type="error" :text="loadingErrorMessage" />
     <v-progress-linear v-else-if="isLoading" indeterminate />
@@ -200,6 +201,7 @@ onUnmounted(() => {
           <th>Source</th>
           <th>External id</th>
           <th>State</th>
+          <th>Deliveries</th>
         </tr>
       </thead>
       <tbody>
@@ -220,6 +222,22 @@ onUnmounted(() => {
             <v-chip :color="eventStateDisplays[receivedEvent.state].color" size="small">
               {{ eventStateDisplays[receivedEvent.state].label }}
             </v-chip>
+          </td>
+          <td>
+            <router-link
+              v-for="delivery in receivedEvent.deliveries"
+              :key="delivery.uuid"
+              :to="{ name: 'delivery-detail', params: { uuid: delivery.uuid } }"
+              class="mr-1"
+            >
+              <v-chip
+                :color="deliveryStatusDisplays[delivery.status].color"
+                :title="`${delivery.target.name}: ${deliveryStatusDisplays[delivery.status].label}`"
+                size="small"
+              >
+                {{ delivery.target.name }}
+              </v-chip>
+            </router-link>
           </td>
         </tr>
       </tbody>

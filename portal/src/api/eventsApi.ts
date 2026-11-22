@@ -7,6 +7,7 @@ export interface ReceivedEvent {
   externalId: string
   receivedAt: string
   state: EventState
+  deliveries: EventDeliverySummary[]
 }
 
 /** Empty or null filters keep every event. Dates are ISO 8601, receivedBefore is excluded. */
@@ -16,13 +17,15 @@ export interface EventListFilters {
   receivedBefore: string | null
   type: string | null
   sourceId: number | null
-  state: EventState | null
+  states: EventState[]
 }
 
 function buildEventListQueryString(eventListFilters: EventListFilters): string {
   const queryParameters = new URLSearchParams()
   Object.entries(eventListFilters).forEach(([filterName, filterValue]) => {
-    if (filterValue !== null && filterValue !== '') {
+    if (Array.isArray(filterValue)) {
+      filterValue.forEach((item) => queryParameters.append(`${filterName}[]`, String(item)))
+    } else if (filterValue !== null && filterValue !== '') {
       queryParameters.set(filterName, String(filterValue))
     }
   })
@@ -43,10 +46,13 @@ export async function listEvents(eventListFilters: EventListFilters): Promise<Re
 
 export type DeliveryStatus = 'pending' | 'retrying' | 'delivered' | 'failed'
 
-export interface EventDelivery {
+export interface EventDeliverySummary {
   uuid: string
   target: { id: number; name: string }
   status: DeliveryStatus
+}
+
+export interface EventDelivery extends EventDeliverySummary {
   attemptsCount: number
   maxAttempts: number
   nextAttemptAt: string | null
