@@ -48,8 +48,10 @@ class EventInRepository extends ServiceEntityRepository
 
         $this->keepEventsContainingSearchedText($queryBuilder, $eventListQuery->search);
         $this->keepEventsMatchingFields($queryBuilder, $eventListQuery);
-        if (null !== $eventListQuery->state) {
-            $this->keepEventsInState($queryBuilder, $eventListQuery->state);
+        if ([] !== $eventListQuery->states) {
+            $queryBuilder->andHaving($queryBuilder->expr()->orX(
+                ...array_map($this->buildEventStateCondition(...), $eventListQuery->states),
+            ));
         }
 
         return $queryBuilder->getQuery()->getResult();
@@ -94,16 +96,15 @@ class EventInRepository extends ServiceEntityRepository
     /**
      * Mirrors EventState::fromDeliveryCounts in SQL, so filtering happens in the database: keep both rules in sync.
      */
-    private function keepEventsInState(QueryBuilder $queryBuilder, EventState $eventState): void
+    private function buildEventStateCondition(EventState $eventState): string
     {
-        $hasDeliveries = self::DELIVERIES_COUNT.' > 0';
-        $hasNoFailedDelivery = self::FAILED_DELIVERIES_COUNT.' = 0';
+        $hasDeliveriesAndNoneFailed = self::DELIVERIES_COUNT.' > 0 AND '.self::FAILED_DELIVERIES_COUNT.' = 0';
 
-        match ($eventState) {
-            EventState::Unrouted => $queryBuilder->andHaving(self::DELIVERIES_COUNT.' = 0'),
-            EventState::NeedsAttention => $queryBuilder->andHaving(self::FAILED_DELIVERIES_COUNT.' > 0'),
-            EventState::InProgress => $queryBuilder->andHaving($hasDeliveries)->andHaving($hasNoFailedDelivery)->andHaving(self::ONGOING_DELIVERIES_COUNT.' > 0'),
-            EventState::Delivered => $queryBuilder->andHaving($hasDeliveries)->andHaving($hasNoFailedDelivery)->andHaving(self::ONGOING_DELIVERIES_COUNT.' = 0'),
+        return match ($eventState) {
+            EventState::Unrouted => self::DELIVERIES_COUNT.' = 0',
+            EventState::NeedsAttention => self::FAILED_DELIVERIES_COUNT.' > 0',
+            EventState::InProgress => $hasDeliveriesAndNoneFailed.' AND '.self::ONGOING_DELIVERIES_COUNT.' > 0',
+            EventState::Delivered => $hasDeliveriesAndNoneFailed.' AND '.self::ONGOING_DELIVERIES_COUNT.' = 0',
         };
     }
 }

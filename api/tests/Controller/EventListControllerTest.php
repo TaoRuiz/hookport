@@ -153,8 +153,12 @@ final class EventListControllerTest extends WebTestCase
         self::assertSame(['evt_inside'], array_column(json_decode($this->client->getResponse()->getContent(), true), 'externalId'));
     }
 
-    #[DataProvider('provideEventStatesAndTheOnlyEventInIt')]
-    public function testStateFilterKeepsOnlyEventsInTheChosenState(string $eventState, string $expectedExternalId): void
+    /**
+     * @param list<string> $eventStates
+     * @param list<string> $expectedExternalIds
+     */
+    #[DataProvider('provideEventStatesAndTheEventsInThem')]
+    public function testStateFilterKeepsOnlyEventsInTheChosenStates(array $eventStates, array $expectedExternalIds): void
     {
         $this->storeEventWithDeliveries([], 'evt_unrouted');
         $this->storeEventWithDeliveries([DeliveryStatus::Delivered, DeliveryStatus::Retrying], 'evt_in_progress');
@@ -162,25 +166,26 @@ final class EventListControllerTest extends WebTestCase
         $this->storeEventWithDeliveries([DeliveryStatus::Pending, DeliveryStatus::Failed], 'evt_needs_attention');
         $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
 
-        $this->client->request('GET', '/api/events', ['state' => $eventState]);
+        $this->client->request('GET', '/api/events', ['states' => $eventStates]);
 
         self::assertResponseIsSuccessful();
-        self::assertSame([$expectedExternalId], array_column(json_decode($this->client->getResponse()->getContent(), true), 'externalId'));
+        self::assertSame($expectedExternalIds, array_column(json_decode($this->client->getResponse()->getContent(), true), 'externalId'));
     }
 
-    public static function provideEventStatesAndTheOnlyEventInIt(): iterable
+    public static function provideEventStatesAndTheEventsInThem(): iterable
     {
-        yield 'unrouted' => ['unrouted', 'evt_unrouted'];
-        yield 'in progress' => ['in_progress', 'evt_in_progress'];
-        yield 'delivered' => ['delivered', 'evt_delivered'];
-        yield 'needs attention' => ['needs_attention', 'evt_needs_attention'];
+        yield 'unrouted' => [['unrouted'], ['evt_unrouted']];
+        yield 'in progress' => [['in_progress'], ['evt_in_progress']];
+        yield 'delivered' => [['delivered'], ['evt_delivered']];
+        yield 'needs attention' => [['needs_attention'], ['evt_needs_attention']];
+        yield 'every state but delivered' => [['unrouted', 'in_progress', 'needs_attention'], ['evt_needs_attention', 'evt_in_progress', 'evt_unrouted']];
     }
 
     public function testUnknownStateIsRefused(): void
     {
         $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
 
-        $this->client->request('GET', '/api/events', ['state' => 'lost']);
+        $this->client->request('GET', '/api/events', ['states' => ['delivered', 'lost']]);
 
         self::assertResponseStatusCodeSame(422);
     }
