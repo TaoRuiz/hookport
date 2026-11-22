@@ -13,27 +13,39 @@ function formatReceivedAt(receivedAt: string): string {
   return new Date(receivedAt).toLocaleString()
 }
 
+// A cleared field holds null.
+const searchedText = ref<string | null>('')
+const appliedSearchedText = ref('')
+
 let nextRefreshTimeoutId: ReturnType<typeof setTimeout> | undefined
 let isUnmounted = false
+let latestLoadNumber = 0
 
 // The next refresh is scheduled once the current one ends, so slow answers never overlap.
 async function loadEventsThenScheduleNextRefresh(): Promise<void> {
-  try {
-    receivedEvents.value = await listEvents()
-    loadingErrorMessage.value = null
-  } catch {
-    if (isLoading.value) {
-      loadingErrorMessage.value = 'Unable to load events, please try again later.'
-    }
-  } finally {
-    isLoading.value = false
-    if (!isUnmounted) {
-      nextRefreshTimeoutId = setTimeout(
-        loadEventsThenScheduleNextRefresh,
-        refreshDelayInMilliseconds,
-      )
-    }
+  const loadNumber = ++latestLoadNumber
+  const loadedEvents = await listEvents(appliedSearchedText.value).catch(() => null)
+
+  // A newer load started meanwhile (a new search): its answer and its refresh loop win.
+  if (loadNumber !== latestLoadNumber || isUnmounted) {
+    return
   }
+
+  if (loadedEvents !== null) {
+    receivedEvents.value = loadedEvents
+    loadingErrorMessage.value = null
+  } else if (isLoading.value) {
+    loadingErrorMessage.value = 'Unable to load events, please try again later.'
+  }
+
+  isLoading.value = false
+  nextRefreshTimeoutId = setTimeout(loadEventsThenScheduleNextRefresh, refreshDelayInMilliseconds)
+}
+
+function applySearch(): void {
+  appliedSearchedText.value = (searchedText.value ?? '').trim()
+  clearTimeout(nextRefreshTimeoutId)
+  void loadEventsThenScheduleNextRefresh()
 }
 
 onMounted(loadEventsThenScheduleNextRefresh)
@@ -48,10 +60,23 @@ onUnmounted(() => {
   <v-container>
     <h1 class="text-h4 mb-4">Events</h1>
 
+    <v-form class="mb-4" @submit.prevent="applySearch">
+      <v-text-field
+        v-model="searchedText"
+        label="Search"
+        placeholder="External id, type or any text of the payload"
+        persistent-placeholder
+        prepend-inner-icon="mdi-magnify"
+        clearable
+        hide-details
+        @click:clear="applySearch"
+      />
+    </v-form>
+
     <v-alert v-if="loadingErrorMessage" type="error" :text="loadingErrorMessage" />
     <v-progress-linear v-else-if="isLoading" indeterminate />
     <p v-else-if="receivedEvents.length === 0" class="text-medium-emphasis">
-      No event received yet.
+      {{ appliedSearchedText === '' ? 'No event received yet.' : 'No event matches this search.' }}
     </p>
 
     <v-table v-else>

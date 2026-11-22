@@ -44,6 +44,21 @@ async function mountEventsView() {
   return mountedWrapper
 }
 
+async function searchFor(searchedText: string, wrapper: VueWrapper): Promise<void> {
+  await wrapper.find('input').setValue(searchedText)
+  await wrapper.find('form').trigger('submit')
+  await flushPromises()
+}
+
+function deferredResponse() {
+  let resolveResponse: (response: Response) => void = () => {}
+  const response = new Promise<Response>((resolve) => {
+    resolveResponse = resolve
+  })
+
+  return { response, resolveResponse }
+}
+
 describe('EventsView', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -121,6 +136,64 @@ describe('EventsView', () => {
 
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
     expect(wrapper.text()).not.toContain('Unable to load events')
+  })
+
+  it('lists only the events matching the searched text', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify([eventNeedingAttention, deliveredEvent])),
+      new Response(JSON.stringify([deliveredEvent])),
+    )
+    const wrapper = await mountEventsView()
+
+    await searchFor(' REF-1234 ', wrapper)
+
+    expect(fetch).toHaveBeenLastCalledWith('/api/events?search=REF-1234')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+  })
+
+  it('keeps the search when refreshing', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify([])),
+      new Response(JSON.stringify([deliveredEvent])),
+      new Response(JSON.stringify([deliveredEvent])),
+    )
+    const wrapper = await mountEventsView()
+    await searchFor('evt_1', wrapper)
+
+    await waitForNextRefresh()
+
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect(fetch).toHaveBeenLastCalledWith('/api/events?search=evt_1')
+  })
+
+  it('says when no event matches the search', async () => {
+    stubFetchResponses(
+      new Response(JSON.stringify([deliveredEvent])),
+      new Response(JSON.stringify([])),
+    )
+    const wrapper = await mountEventsView()
+
+    await searchFor('unknown', wrapper)
+
+    expect(wrapper.text()).toContain('No event matches this search.')
+  })
+
+  it('ignores a refresh answer that arrives after a new search', async () => {
+    const slowRefresh = deferredResponse()
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify([deliveredEvent])))
+      .mockReturnValueOnce(slowRefresh.response)
+      .mockResolvedValueOnce(new Response(JSON.stringify([])))
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = await mountEventsView()
+    await vi.advanceTimersByTimeAsync(5000)
+
+    await searchFor('unknown', wrapper)
+    slowRefresh.resolveResponse(new Response(JSON.stringify([eventNeedingAttention, deliveredEvent])))
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('No event matches this search.')
   })
 
   it('stops refreshing once the page is left', async () => {

@@ -9,8 +9,11 @@ export interface ReceivedEvent {
   state: EventState
 }
 
-export async function listEvents(): Promise<ReceivedEvent[]> {
-  const response = await fetch('/api/events')
+/** An empty searched text lists every event. */
+export async function listEvents(searchedText: string): Promise<ReceivedEvent[]> {
+  const response = await fetch(
+    searchedText === '' ? '/api/events' : `/api/events?${new URLSearchParams({ search: searchedText })}`,
+  )
 
   if (!response.ok) {
     throw new Error(`Loading events failed with HTTP ${response.status}.`)
