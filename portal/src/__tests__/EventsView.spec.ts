@@ -95,6 +95,22 @@ async function chooseInFilter(selectLabel: string, optionTitle: string, wrapper:
   await flushPromises()
 }
 
+async function pickDayOfCurrentMonth(dateLabel: string, dayNumber: number, wrapper: VueWrapper) {
+  await wrapper
+    .findAll('.v-date-input')
+    .find((candidate) => candidate.find('label').text() === dateLabel)!
+    .find('.v-field')
+    .trigger('click')
+  await flushPromises()
+  await new DOMWrapper(document.body)
+    .findAll(
+      '.v-overlay--active .v-date-picker-month__day:not(.v-date-picker-month__day--adjacent) button',
+    )
+    .find((dayButton) => dayButton.text() === String(dayNumber))!
+    .trigger('click')
+  await flushPromises()
+}
+
 async function toggleStateChip(stateLabel: string, wrapper: VueWrapper) {
   await wrapper
     .findAll('.v-chip-group .v-chip')
@@ -320,16 +336,16 @@ describe('EventsView', () => {
     stubFetchResponses()
     const wrapper = await mountEventsView()
 
-    await wrapper.find('input[type="date"]').setValue('2026-01-10')
-    await wrapper.findAll('input[type="date"]')[1]!.setValue('2026-01-10')
-    await flushPromises()
+    await pickDayOfCurrentMonth('Received from', 10, wrapper)
+    await pickDayOfCurrentMonth('Received to', 10, wrapper)
 
+    const today = new Date()
     const lastQueryParameters = new URLSearchParams(lastEventListUrl().split('?')[1])
     expect(lastQueryParameters.get('receivedFrom')).toBe(
-      new Date('2026-01-10T00:00:00').toISOString(),
+      new Date(today.getFullYear(), today.getMonth(), 10).toISOString(),
     )
     expect(lastQueryParameters.get('receivedBefore')).toBe(
-      new Date('2026-01-11T00:00:00').toISOString(),
+      new Date(today.getFullYear(), today.getMonth(), 11).toISOString(),
     )
   })
 

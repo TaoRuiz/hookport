@@ -24,9 +24,9 @@ function formatReceivedAt(receivedAt: string): string {
 // A cleared field holds null.
 const searchedText = ref<string | null>('')
 const appliedSearchedText = ref('')
-// Dates come from native date inputs: '' or 'YYYY-MM-DD', in the browser time zone.
-const receivedFromDate = ref('')
-const receivedToDate = ref('')
+// Date inputs give a Date at local midnight, or null once cleared.
+const receivedFromDate = ref<Date | null>(null)
+const receivedToDate = ref<Date | null>(null)
 const chosenType = ref<string | null>(null)
 const chosenSourceId = ref<number | null>(null)
 const allEventStates = Object.keys(eventStateDisplays) as EventState[]
@@ -36,8 +36,9 @@ const chosenStates = ref<EventState[]>([...allEventStates])
 const sources = ref<Source[]>([])
 const eventTypes = ref<EventType[]>([])
 
-function convertLocalDateToIsoString(localDate: string, daysToAdd = 0): string {
-  const midnight = new Date(`${localDate}T00:00:00`)
+function convertLocalDateToIsoString(localDate: Date, daysToAdd = 0): string {
+  const midnight = new Date(localDate)
+  midnight.setHours(0, 0, 0, 0)
   midnight.setDate(midnight.getDate() + daysToAdd)
 
   return midnight.toISOString()
@@ -46,10 +47,10 @@ function convertLocalDateToIsoString(localDate: string, daysToAdd = 0): string {
 const eventListFilters = computed<EventListFilters>(() => ({
   search: appliedSearchedText.value,
   receivedFrom:
-    receivedFromDate.value === '' ? null : convertLocalDateToIsoString(receivedFromDate.value),
+    receivedFromDate.value === null ? null : convertLocalDateToIsoString(receivedFromDate.value),
   // The chosen "to" day is included: the API excludes receivedBefore, so it gets the next midnight.
   receivedBefore:
-    receivedToDate.value === '' ? null : convertLocalDateToIsoString(receivedToDate.value, 1),
+    receivedToDate.value === null ? null : convertLocalDateToIsoString(receivedToDate.value, 1),
   type: chosenType.value,
   sourceId: chosenSourceId.value,
   // Every state chosen means no state filter.
@@ -126,27 +127,48 @@ onUnmounted(() => {
   <v-container>
     <h1 class="text-h4 mb-4">Events</h1>
 
-    <v-form class="mb-4" @submit.prevent="applySearch">
-      <v-text-field
-        v-model="searchedText"
-        label="Search"
-        placeholder="External id, type or any text of the payload"
-        persistent-placeholder
-        prepend-inner-icon="mdi-magnify"
-        clearable
-        hide-details
-        @click:clear="applySearch"
-      />
-    </v-form>
-
-    <v-row class="mb-4" dense>
-      <v-col cols="12" sm="6" md="2">
-        <v-text-field v-model="receivedFromDate" label="Received from" type="date" hide-details />
+    <v-row class="mb-2" dense>
+      <v-col cols="12" lg="4">
+        <v-form @submit.prevent="applySearch">
+          <v-text-field
+            v-model="searchedText"
+            label="Search"
+            placeholder="External id, type or any text of the payload"
+            persistent-placeholder
+            append-inner-icon="mdi-magnify"
+            density="compact"
+            variant="outlined"
+            clearable
+            hide-details
+            @click:clear="applySearch"
+          />
+        </v-form>
       </v-col>
-      <v-col cols="12" sm="6" md="2">
-        <v-text-field v-model="receivedToDate" label="Received to" type="date" hide-details />
+      <v-col cols="12" sm="6" md="3" lg="2">
+        <v-date-input
+          v-model="receivedFromDate"
+          label="Received from"
+          prepend-icon=""
+          append-inner-icon="mdi-calendar"
+          density="compact"
+          variant="outlined"
+          clearable
+          hide-details
+        />
       </v-col>
-      <v-col cols="12" sm="6" md="4">
+      <v-col cols="12" sm="6" md="3" lg="2">
+        <v-date-input
+          v-model="receivedToDate"
+          label="Received to"
+          prepend-icon=""
+          append-inner-icon="mdi-calendar"
+          density="compact"
+          variant="outlined"
+          clearable
+          hide-details
+        />
+      </v-col>
+      <v-col cols="12" sm="6" md="3" lg="2">
         <v-select
           v-model="chosenType"
           label="Type"
@@ -155,11 +177,13 @@ onUnmounted(() => {
           item-value="slug"
           placeholder="Any type"
           persistent-placeholder
+          density="compact"
+          variant="outlined"
           clearable
           hide-details
         />
       </v-col>
-      <v-col cols="12" sm="6" md="4">
+      <v-col cols="12" sm="6" md="3" lg="2">
         <v-select
           v-model="chosenSourceId"
           label="Source"
@@ -168,6 +192,8 @@ onUnmounted(() => {
           item-value="id"
           placeholder="Any source"
           persistent-placeholder
+          density="compact"
+          variant="outlined"
           clearable
           hide-details
         />
@@ -182,6 +208,7 @@ onUnmounted(() => {
         :value="eventState"
         :color="eventStateDisplays[eventState].color"
         variant="outlined"
+        size="small"
       >
         {{ eventStateDisplays[eventState].label }}
       </v-chip>
