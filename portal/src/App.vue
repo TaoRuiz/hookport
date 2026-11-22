@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
 import { useUserPreferencesStore } from '@/stores/userPreferences'
@@ -6,6 +7,19 @@ import { useUserPreferencesStore } from '@/stores/userPreferences'
 const authenticatedUserStore = useAuthenticatedUserStore()
 const router = useRouter()
 const userPreferencesStore = useUserPreferencesStore()
+
+const AVATAR_COLOR_BY_ROLE: Record<string, string> = {
+  ROLE_ADMIN: 'deep-purple',
+  ROLE_DEMO: 'teal',
+}
+const AVATAR_COLOR_FOR_UNKNOWN_ROLE = 'grey'
+
+// Each user has exactly one role, so the first one is the user's role.
+const avatarColor = computed(() => {
+  const userRole = authenticatedUserStore.authenticatedUser?.roles[0] ?? ''
+
+  return AVATAR_COLOR_BY_ROLE[userRole] ?? AVATAR_COLOR_FOR_UNKNOWN_ROLE
+})
 
 const navigationGroups = [
   {
@@ -39,7 +53,7 @@ async function logOutAndGoToLogin(): Promise<void> {
         />
       </template>
       <v-spacer />
-      <v-avatar color="primary" size="32" class="mr-2">
+      <v-avatar :color="avatarColor" size="32" class="mr-2">
         {{ authenticatedUserStore.authenticatedUser.login.charAt(0).toUpperCase() }}
       </v-avatar>
       <span class="mr-4">{{ authenticatedUserStore.authenticatedUser.login }}</span>

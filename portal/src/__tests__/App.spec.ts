@@ -49,6 +49,19 @@ describe('App', () => {
     expect(wrapper.find('header .v-avatar').text()).toBe('A')
   })
 
+  it.each([
+    ['ROLE_ADMIN', 'bg-deep-purple'],
+    ['ROLE_DEMO', 'bg-teal'],
+    ['ROLE_UNKNOWN', 'bg-grey'],
+  ])('colors the avatar of a %s user with %s', async (role, expectedColorClass) => {
+    stubFetchResponse(200, { login: 'someone', roles: [role], grantedRoles: [role] })
+    await router.push({ name: 'home' })
+
+    const wrapper = mount(App, { global: { plugins: [createVuetify(), router] } })
+
+    expect(wrapper.find('header .v-avatar').classes()).toContain(expectedColorClass)
+  })
+
   it('separates the monitoring pages from the configuration pages in the navigation', async () => {
     const wrapper = await mountAppSignedInAsAdmin(router)
     const navigationText = wrapper.find('nav').text()
