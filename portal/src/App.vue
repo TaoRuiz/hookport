@@ -7,6 +7,22 @@ const authenticatedUserStore = useAuthenticatedUserStore()
 const router = useRouter()
 const isNavigationCollapsedToIcons = ref(false)
 
+const navigationGroups = [
+  {
+    title: 'Monitoring',
+    links: [{ routeName: 'events', icon: 'mdi-format-list-bulleted', title: 'Events' }],
+  },
+  {
+    title: 'Configuration',
+    links: [
+      { routeName: 'sources', icon: 'mdi-application-export', title: 'Sources' },
+      { routeName: 'targets', icon: 'mdi-application-import', title: 'Targets' },
+      { routeName: 'event-types', icon: 'mdi-tag-outline', title: 'Event types' },
+      { routeName: 'mappings', icon: 'mdi-call-split', title: 'Mappings' },
+    ],
+  },
+]
+
 async function logOutAndGoToLogin(): Promise<void> {
   await authenticatedUserStore.logOut()
   await router.push({ name: 'login' })
@@ -21,30 +37,31 @@ async function logOutAndGoToLogin(): Promise<void> {
       permanent
     >
       <v-list nav density="compact">
-        <v-list-subheader v-if="!isNavigationCollapsedToIcons">Monitoring</v-list-subheader>
-        <v-list-item
-          :to="{ name: 'events' }"
-          prepend-icon="mdi-format-list-bulleted"
-          title="Events"
-        />
-        <v-divider v-if="isNavigationCollapsedToIcons" class="my-2" />
-        <v-list-subheader v-else>Configuration</v-list-subheader>
-        <v-list-item
-          :to="{ name: 'sources' }"
-          prepend-icon="mdi-application-export"
-          title="Sources"
-        />
-        <v-list-item
-          :to="{ name: 'targets' }"
-          prepend-icon="mdi-application-import"
-          title="Targets"
-        />
-        <v-list-item
-          :to="{ name: 'event-types' }"
-          prepend-icon="mdi-tag-outline"
-          title="Event types"
-        />
-        <v-list-item :to="{ name: 'mappings' }" prepend-icon="mdi-call-split" title="Mappings" />
+        <template
+          v-for="(navigationGroup, groupIndex) in navigationGroups"
+          :key="navigationGroup.title"
+        >
+          <template v-if="isNavigationCollapsedToIcons">
+            <v-divider v-if="groupIndex > 0" class="my-2" />
+          </template>
+          <v-list-subheader v-else>{{ navigationGroup.title }}</v-list-subheader>
+          <v-tooltip
+            v-for="navigationLink in navigationGroup.links"
+            :key="navigationLink.routeName"
+            :text="navigationLink.title"
+            :disabled="!isNavigationCollapsedToIcons"
+            location="end"
+          >
+            <template #activator="{ props: tooltipActivatorProps }">
+              <v-list-item
+                v-bind="tooltipActivatorProps"
+                :to="{ name: navigationLink.routeName }"
+                :prepend-icon="navigationLink.icon"
+                :title="navigationLink.title"
+              />
+            </template>
+          </v-tooltip>
+        </template>
       </v-list>
     </v-navigation-drawer>
     <v-app-bar v-if="authenticatedUserStore.authenticatedUser" title="HookPort">

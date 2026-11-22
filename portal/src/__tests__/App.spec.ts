@@ -64,6 +64,18 @@ describe('App', () => {
     expect(wrapper.find('nav').text()).toContain('Configuration')
   })
 
+  it('names a navigation icon on hover once the navigation is collapsed', async () => {
+    const wrapper = await mountAppSignedInAsAdmin(router)
+    await wrapper.find('button[aria-label="Collapse or expand the navigation"]').trigger('click')
+
+    await wrapper.find('nav a[href="/sources"]').trigger('mouseenter')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(document.body.querySelector('.v-tooltip.v-overlay--active')?.textContent).toContain(
+      'Sources',
+    )
+  })
+
   it('logs out with a POST and goes back to the login page', async () => {
     const wrapper = await mountAppSignedInAsAdmin(router)
     stubFetchResponse(204, null)
