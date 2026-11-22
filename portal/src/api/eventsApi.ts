@@ -7,10 +7,35 @@ export interface ReceivedEvent {
   externalId: string
   receivedAt: string
   state: EventState
+  deliveries: EventDeliverySummary[]
 }
 
-export async function listEvents(): Promise<ReceivedEvent[]> {
-  const response = await fetch('/api/events')
+/** Empty or null filters keep every event. Dates are ISO 8601, receivedBefore is excluded. */
+export interface EventListFilters {
+  search: string
+  receivedFrom: string | null
+  receivedBefore: string | null
+  type: string | null
+  sourceId: number | null
+  states: EventState[]
+}
+
+function buildEventListQueryString(eventListFilters: EventListFilters): string {
+  const queryParameters = new URLSearchParams()
+  Object.entries(eventListFilters).forEach(([filterName, filterValue]) => {
+    if (Array.isArray(filterValue)) {
+      filterValue.forEach((item) => queryParameters.append(`${filterName}[]`, String(item)))
+    } else if (filterValue !== null && filterValue !== '') {
+      queryParameters.set(filterName, String(filterValue))
+    }
+  })
+
+  return queryParameters.toString()
+}
+
+export async function listEvents(eventListFilters: EventListFilters): Promise<ReceivedEvent[]> {
+  const queryString = buildEventListQueryString(eventListFilters)
+  const response = await fetch(queryString === '' ? '/api/events' : `/api/events?${queryString}`)
 
   if (!response.ok) {
     throw new Error(`Loading events failed with HTTP ${response.status}.`)
@@ -21,10 +46,13 @@ export async function listEvents(): Promise<ReceivedEvent[]> {
 
 export type DeliveryStatus = 'pending' | 'retrying' | 'delivered' | 'failed'
 
-export interface EventDelivery {
+export interface EventDeliverySummary {
   uuid: string
   target: { id: number; name: string }
   status: DeliveryStatus
+}
+
+export interface EventDelivery extends EventDeliverySummary {
   attemptsCount: number
   maxAttempts: number
   nextAttemptAt: string | null
