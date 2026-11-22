@@ -31,6 +31,17 @@ async function logOutAndGoToLogin(): Promise<void> {
 
 <template>
   <v-app>
+    <v-app-bar v-if="authenticatedUserStore.authenticatedUser" title="HookPort">
+      <template #prepend>
+        <v-app-bar-nav-icon
+          aria-label="Collapse or expand the navigation"
+          @click="isNavigationCollapsedToIcons = !isNavigationCollapsedToIcons"
+        />
+      </template>
+      <v-spacer />
+      <span class="mr-4">{{ authenticatedUserStore.authenticatedUser.login }}</span>
+      <v-btn prepend-icon="mdi-logout" @click="logOutAndGoToLogin">Sign out</v-btn>
+    </v-app-bar>
     <v-navigation-drawer
       v-if="authenticatedUserStore.authenticatedUser"
       :rail="isNavigationCollapsedToIcons"
@@ -64,17 +75,6 @@ async function logOutAndGoToLogin(): Promise<void> {
         </template>
       </v-list>
     </v-navigation-drawer>
-    <v-app-bar v-if="authenticatedUserStore.authenticatedUser" title="HookPort">
-      <template #prepend>
-        <v-app-bar-nav-icon
-          aria-label="Collapse or expand the navigation"
-          @click="isNavigationCollapsedToIcons = !isNavigationCollapsedToIcons"
-        />
-      </template>
-      <v-spacer />
-      <span class="mr-4">{{ authenticatedUserStore.authenticatedUser.login }}</span>
-      <v-btn prepend-icon="mdi-logout" @click="logOutAndGoToLogin">Sign out</v-btn>
-    </v-app-bar>
     <v-main>
       <router-view />
     </v-main>

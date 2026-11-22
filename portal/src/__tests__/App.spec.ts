@@ -51,6 +51,15 @@ describe('App', () => {
     )
   })
 
+  it('spans the top bar across the full width, with the navigation below it', async () => {
+    const wrapper = await mountAppSignedInAsAdmin(router)
+    await flushPromises()
+
+    expect(wrapper.find('header').attributes('style')).toContain('left: 0px')
+    expect(wrapper.find('header').attributes('style')).toContain('width: calc(100% - 0px)')
+    expect(wrapper.find('nav').attributes('style')).toContain('top: 64px')
+  })
+
   it('collapses the navigation to icons and expands it back', async () => {
     const wrapper = await mountAppSignedInAsAdmin(router)
     const toggleButton = wrapper.find('button[aria-label="Collapse or expand the navigation"]')
