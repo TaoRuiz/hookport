@@ -46,6 +46,12 @@ describe('App', () => {
     expect(wrapper.text()).toContain('Sign out')
   })
 
+  it('shows the logo before the app name in the top bar', async () => {
+    const wrapper = await mountAppSignedInAsAdmin(router)
+
+    expect(wrapper.find('header img[src="/logo.svg"]').exists()).toBe(true)
+  })
+
   it('shows an avatar with the uppercase initial of the signed-in login', async () => {
     const wrapper = await mountAppSignedInAsAdmin(router)
 

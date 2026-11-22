@@ -67,6 +67,7 @@ async function logOutAndGoToLogin(): Promise<void> {
           aria-label="Collapse or expand the navigation"
           @click="userPreferencesStore.toggleNavigationCollapsedToIcons"
         />
+        <v-img src="/logo.svg" alt="" width="28" height="28" class="ml-2" />
       </template>
       <v-spacer />
       <v-menu v-model="isUserMenuOpen" location="bottom end" offset="8">
