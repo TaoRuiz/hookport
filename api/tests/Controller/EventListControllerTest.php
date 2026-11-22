@@ -114,6 +114,30 @@ final class EventListControllerTest extends WebTestCase
         self::assertCount(2, json_decode($this->client->getResponse()->getContent(), true));
     }
 
+    public function testEachEventListsItsDeliveriesWithTargetAndStatusOrderedByTargetName(): void
+    {
+        $eventIn = $this->storeEvent('evt_1');
+        $this->storeEvent('evt_2');
+        $logisticsTarget = $this->createTarget('Logistics', 'https://logistics.example.test', 'target-shared-secret');
+        $accountingTarget = $this->createTarget('Accounting', 'https://accounting.example.test', 'target-shared-secret');
+        $entityManager = static::getContainer()->get(EntityManagerInterface::class);
+        $failedDelivery = new Delivery($eventIn, $logisticsTarget, maxAttempts: 5)->setStatus(DeliveryStatus::Failed);
+        $deliveredDelivery = new Delivery($eventIn, $accountingTarget, maxAttempts: 5)->setStatus(DeliveryStatus::Delivered);
+        $entityManager->persist($failedDelivery);
+        $entityManager->persist($deliveredDelivery);
+        $entityManager->flush();
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events');
+
+        $listedEventsByExternalId = array_column(json_decode($this->client->getResponse()->getContent(), true), null, 'externalId');
+        self::assertSame([
+            ['uuid' => (string) $deliveredDelivery->getUuid(), 'target' => ['id' => $accountingTarget->getId(), 'name' => 'Accounting'], 'status' => 'delivered'],
+            ['uuid' => (string) $failedDelivery->getUuid(), 'target' => ['id' => $logisticsTarget->getId(), 'name' => 'Logistics'], 'status' => 'failed'],
+        ], $listedEventsByExternalId['evt_1']['deliveries']);
+        self::assertSame([], $listedEventsByExternalId['evt_2']['deliveries']);
+    }
+
     public function testFiltersKeepOnlyEventsOfTheChosenTypeAndSource(): void
     {
         $otherSource = $this->createSource('other-app', 'other-shared-secret');
