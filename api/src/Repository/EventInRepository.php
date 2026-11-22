@@ -2,9 +2,12 @@
 
 namespace App\Repository;
 
+use App\Dto\EventListQuery;
 use App\Entity\EventIn;
 use App\Enum\DeliveryStatus;
+use App\Enum\EventState;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 
 /**
@@ -17,19 +20,23 @@ class EventInRepository extends ServiceEntityRepository
         parent::__construct($registry, EventIn::class);
     }
 
+    private const string DELIVERIES_COUNT = 'COUNT(delivery.uuid)';
+    private const string FAILED_DELIVERIES_COUNT = 'SUM(CASE WHEN delivery.status = :failedStatus THEN 1 ELSE 0 END)';
+    private const string ONGOING_DELIVERIES_COUNT = 'SUM(CASE WHEN delivery.status IN (:ongoingStatuses) THEN 1 ELSE 0 END)';
+
     /**
      * Counts are aggregated in the query so the list never loads every delivery.
-     * A searched text keeps the events whose external id, type or payload contains it, ignoring case.
+     * The search keeps the events whose external id, type or payload contains the text, ignoring case.
      *
      * @return list<array{0: EventIn, deliveriesCount: int|string, failedDeliveriesCount: int|string|null, ongoingDeliveriesCount: int|string|null}>
      */
-    public function findWithSourceAndDeliveryCountsNewestFirst(?string $searchedText = null): array
+    public function findWithSourceAndDeliveryCountsNewestFirst(EventListQuery $eventListQuery): array
     {
         $queryBuilder = $this->createQueryBuilder('eventIn')
             ->addSelect('source')
-            ->addSelect('COUNT(delivery.uuid) AS deliveriesCount')
-            ->addSelect('SUM(CASE WHEN delivery.status = :failedStatus THEN 1 ELSE 0 END) AS failedDeliveriesCount')
-            ->addSelect('SUM(CASE WHEN delivery.status IN (:ongoingStatuses) THEN 1 ELSE 0 END) AS ongoingDeliveriesCount')
+            ->addSelect(self::DELIVERIES_COUNT.' AS deliveriesCount')
+            ->addSelect(self::FAILED_DELIVERIES_COUNT.' AS failedDeliveriesCount')
+            ->addSelect(self::ONGOING_DELIVERIES_COUNT.' AS ongoingDeliveriesCount')
             ->innerJoin('eventIn.source', 'source')
             ->leftJoin('eventIn.deliveries', 'delivery')
             ->groupBy('eventIn.uuid', 'source.id')
@@ -39,13 +46,64 @@ class EventInRepository extends ServiceEntityRepository
             ->setParameter('failedStatus', DeliveryStatus::Failed->value)
             ->setParameter('ongoingStatuses', [DeliveryStatus::Pending->value, DeliveryStatus::Retrying->value]);
 
-        if (null !== $searchedText && '' !== trim($searchedText)) {
-            $queryBuilder
-                ->andWhere('LOWER(eventIn.externalId) LIKE :searchPattern OR LOWER(eventIn.type) LIKE :searchPattern OR LOWER(JSONB_AS_TEXT(eventIn.payload)) LIKE :searchPattern')
-                // Escapes LIKE wildcards so "%" or "_" typed by the user are matched literally.
-                ->setParameter('searchPattern', '%'.addcslashes(mb_strtolower(trim($searchedText)), '%_\\').'%');
+        $this->keepEventsContainingSearchedText($queryBuilder, $eventListQuery->search);
+        $this->keepEventsMatchingFields($queryBuilder, $eventListQuery);
+        if (null !== $eventListQuery->state) {
+            $this->keepEventsInState($queryBuilder, $eventListQuery->state);
         }
 
         return $queryBuilder->getQuery()->getResult();
+    }
+
+    private function keepEventsContainingSearchedText(QueryBuilder $queryBuilder, ?string $searchedText): void
+    {
+        if (null === $searchedText || '' === trim($searchedText)) {
+            return;
+        }
+
+        $queryBuilder
+            ->andWhere('LOWER(eventIn.externalId) LIKE :searchPattern OR LOWER(eventIn.type) LIKE :searchPattern OR LOWER(JSONB_AS_TEXT(eventIn.payload)) LIKE :searchPattern')
+            // Escapes LIKE wildcards so "%" or "_" typed by the user are matched literally.
+            ->setParameter('searchPattern', '%'.addcslashes(mb_strtolower(trim($searchedText)), '%_\\').'%');
+    }
+
+    private function keepEventsMatchingFields(QueryBuilder $queryBuilder, EventListQuery $eventListQuery): void
+    {
+        if (null !== $eventListQuery->receivedFrom) {
+            $queryBuilder->andWhere('eventIn.receivedAt >= :receivedFrom')->setParameter('receivedFrom', $this->convertToStorageTimezone($eventListQuery->receivedFrom));
+        }
+        if (null !== $eventListQuery->receivedBefore) {
+            $queryBuilder->andWhere('eventIn.receivedAt < :receivedBefore')->setParameter('receivedBefore', $this->convertToStorageTimezone($eventListQuery->receivedBefore));
+        }
+        if (null !== $eventListQuery->type) {
+            $queryBuilder->andWhere('eventIn.type = :type')->setParameter('type', $eventListQuery->type);
+        }
+        if (null !== $eventListQuery->sourceId) {
+            $queryBuilder->andWhere('source.id = :sourceId')->setParameter('sourceId', $eventListQuery->sourceId);
+        }
+    }
+
+    /**
+     * received_at is stored without time zone, in the PHP default one, and Doctrine formats a date without converting it.
+     */
+    private function convertToStorageTimezone(\DateTimeImmutable $date): \DateTimeImmutable
+    {
+        return $date->setTimezone(new \DateTimeZone(date_default_timezone_get()));
+    }
+
+    /**
+     * Mirrors EventState::fromDeliveryCounts in SQL, so filtering happens in the database: keep both rules in sync.
+     */
+    private function keepEventsInState(QueryBuilder $queryBuilder, EventState $eventState): void
+    {
+        $hasDeliveries = self::DELIVERIES_COUNT.' > 0';
+        $hasNoFailedDelivery = self::FAILED_DELIVERIES_COUNT.' = 0';
+
+        match ($eventState) {
+            EventState::Unrouted => $queryBuilder->andHaving(self::DELIVERIES_COUNT.' = 0'),
+            EventState::NeedsAttention => $queryBuilder->andHaving(self::FAILED_DELIVERIES_COUNT.' > 0'),
+            EventState::InProgress => $queryBuilder->andHaving($hasDeliveries)->andHaving($hasNoFailedDelivery)->andHaving(self::ONGOING_DELIVERIES_COUNT.' > 0'),
+            EventState::Delivered => $queryBuilder->andHaving($hasDeliveries)->andHaving($hasNoFailedDelivery)->andHaving(self::ONGOING_DELIVERIES_COUNT.' = 0'),
+        };
     }
 }

@@ -114,6 +114,77 @@ final class EventListControllerTest extends WebTestCase
         self::assertCount(2, json_decode($this->client->getResponse()->getContent(), true));
     }
 
+    public function testFiltersKeepOnlyEventsOfTheChosenTypeAndSource(): void
+    {
+        $otherSource = $this->createSource('other-app', 'other-shared-secret');
+        $this->storeEvent('evt_1', 'record.created');
+        $this->storeEvent('evt_2', 'record.updated');
+        $this->storeEvent('evt_3', 'record.created', source: $otherSource);
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events', ['type' => 'record.created', 'sourceId' => $this->source->getId()]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(['evt_1'], array_column(json_decode($this->client->getResponse()->getContent(), true), 'externalId'));
+    }
+
+    public function testDateFilterKeepsEventsReceivedFromTheFirstDateAndBeforeTheSecond(): void
+    {
+        $this->receiveEventAt($this->storeEvent('evt_before'), '2026-01-09 23:59:59');
+        $this->receiveEventAt($this->storeEvent('evt_first_second'), '2026-01-10 00:00:00');
+        $this->receiveEventAt($this->storeEvent('evt_last_second'), '2026-01-10 23:59:59');
+        $this->receiveEventAt($this->storeEvent('evt_after'), '2026-01-11 00:00:00');
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events', ['receivedFrom' => '2026-01-10T00:00:00+00:00', 'receivedBefore' => '2026-01-11T00:00:00+00:00']);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(['evt_last_second', 'evt_first_second'], array_column(json_decode($this->client->getResponse()->getContent(), true), 'externalId'));
+    }
+
+    public function testDateFilterHonorsTheTimezoneOffsetOfTheDates(): void
+    {
+        $this->receiveEventAt($this->storeEvent('evt_before'), '2026-01-09 22:59:59');
+        $this->receiveEventAt($this->storeEvent('evt_inside'), '2026-01-09 23:00:00');
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events', ['receivedFrom' => '2026-01-10T00:00:00+01:00']);
+
+        self::assertSame(['evt_inside'], array_column(json_decode($this->client->getResponse()->getContent(), true), 'externalId'));
+    }
+
+    #[DataProvider('provideEventStatesAndTheOnlyEventInIt')]
+    public function testStateFilterKeepsOnlyEventsInTheChosenState(string $eventState, string $expectedExternalId): void
+    {
+        $this->storeEventWithDeliveries([], 'evt_unrouted');
+        $this->storeEventWithDeliveries([DeliveryStatus::Delivered, DeliveryStatus::Retrying], 'evt_in_progress');
+        $this->storeEventWithDeliveries([DeliveryStatus::Delivered, DeliveryStatus::Delivered], 'evt_delivered');
+        $this->storeEventWithDeliveries([DeliveryStatus::Pending, DeliveryStatus::Failed], 'evt_needs_attention');
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events', ['state' => $eventState]);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([$expectedExternalId], array_column(json_decode($this->client->getResponse()->getContent(), true), 'externalId'));
+    }
+
+    public static function provideEventStatesAndTheOnlyEventInIt(): iterable
+    {
+        yield 'unrouted' => ['unrouted', 'evt_unrouted'];
+        yield 'in progress' => ['in_progress', 'evt_in_progress'];
+        yield 'delivered' => ['delivered', 'evt_delivered'];
+        yield 'needs attention' => ['needs_attention', 'evt_needs_attention'];
+    }
+
+    public function testUnknownStateIsRefused(): void
+    {
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events', ['state' => 'lost']);
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
     public function testAnonymousVisitorCannotListEvents(): void
     {
         $this->client->request('GET', '/api/events');
@@ -124,9 +195,9 @@ final class EventListControllerTest extends WebTestCase
     /**
      * @param array<mixed> $payload
      */
-    private function storeEvent(string $externalId, string $type = 'record.created', array $payload = ['field' => 'value']): EventIn
+    private function storeEvent(string $externalId, string $type = 'record.created', array $payload = ['field' => 'value'], ?Source $source = null): EventIn
     {
-        $eventIn = new EventIn($this->source, $externalId, $type, $payload);
+        $eventIn = new EventIn($source ?? $this->source, $externalId, $type, $payload);
         $entityManager = static::getContainer()->get(EntityManagerInterface::class);
         $entityManager->persist($eventIn);
         $entityManager->flush();
@@ -134,12 +205,21 @@ final class EventListControllerTest extends WebTestCase
         return $eventIn;
     }
 
+    private function receiveEventAt(EventIn $eventIn, string $receivedAt): void
+    {
+        static::getContainer()->get(EntityManagerInterface::class)
+            ->createQuery('UPDATE '.EventIn::class.' eventIn SET eventIn.receivedAt = :receivedAt WHERE eventIn.uuid = :uuid')
+            ->setParameter('receivedAt', new \DateTimeImmutable($receivedAt, new \DateTimeZone('UTC')), 'datetime_immutable')
+            ->setParameter('uuid', $eventIn->getUuid(), 'uuid')
+            ->execute();
+    }
+
     /**
      * @param list<DeliveryStatus> $deliveryStatuses
      */
-    private function storeEventWithDeliveries(array $deliveryStatuses): void
+    private function storeEventWithDeliveries(array $deliveryStatuses, string $externalId = 'evt_1'): void
     {
-        $eventIn = $this->storeEvent('evt_1');
+        $eventIn = $this->storeEvent($externalId);
         $entityManager = static::getContainer()->get(EntityManagerInterface::class);
         foreach ($deliveryStatuses as $targetNumber => $deliveryStatus) {
             $target = $this->createTarget('Receiver '.$targetNumber, 'https://receiver.example.test', 'target-shared-secret');
