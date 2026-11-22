@@ -42,6 +42,15 @@ describe('App', () => {
     expect(wrapper.text()).toContain('Sign out')
   })
 
+  it('separates the monitoring pages from the configuration pages in the navigation', async () => {
+    const wrapper = await mountAppSignedInAsAdmin(router)
+    const navigationText = wrapper.find('nav').text()
+
+    expect(navigationText).toMatch(
+      /Monitoring\s*Events\s*Configuration\s*Sources\s*Targets\s*Event types\s*Mappings/,
+    )
+  })
+
   it('logs out with a POST and goes back to the login page', async () => {
     const wrapper = await mountAppSignedInAsAdmin(router)
     stubFetchResponse(204, null)
