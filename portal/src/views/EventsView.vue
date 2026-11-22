@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
-import { listEvents, type ReceivedEvent } from '@/api/eventsApi'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { listEventTypes, type EventType } from '@/api/eventTypesApi'
+import {
+  listEvents,
+  type EventListFilters,
+  type EventState,
+  type ReceivedEvent,
+} from '@/api/eventsApi'
+import { listSources, type Source } from '@/api/sourcesApi'
 import { eventStateDisplays } from '@/components/eventStateDisplays'
 
 const refreshDelayInMilliseconds = 5000
@@ -16,6 +23,45 @@ function formatReceivedAt(receivedAt: string): string {
 // A cleared field holds null.
 const searchedText = ref<string | null>('')
 const appliedSearchedText = ref('')
+// Dates come from native date inputs: '' or 'YYYY-MM-DD', in the browser time zone.
+const receivedFromDate = ref('')
+const receivedToDate = ref('')
+const chosenType = ref<string | null>(null)
+const chosenSourceId = ref<number | null>(null)
+const chosenState = ref<EventState | null>(null)
+
+// Disabled sources and event types stay listed: their past events remain in the list.
+const sources = ref<Source[]>([])
+const eventTypes = ref<EventType[]>([])
+const stateChoices = Object.entries(eventStateDisplays).map(([state, display]) => ({
+  state,
+  label: display.label,
+}))
+
+function convertLocalDateToIsoString(localDate: string, daysToAdd = 0): string {
+  const midnight = new Date(`${localDate}T00:00:00`)
+  midnight.setDate(midnight.getDate() + daysToAdd)
+
+  return midnight.toISOString()
+}
+
+const eventListFilters = computed<EventListFilters>(() => ({
+  search: appliedSearchedText.value,
+  receivedFrom:
+    receivedFromDate.value === '' ? null : convertLocalDateToIsoString(receivedFromDate.value),
+  // The chosen "to" day is included: the API excludes receivedBefore, so it gets the next midnight.
+  receivedBefore:
+    receivedToDate.value === '' ? null : convertLocalDateToIsoString(receivedToDate.value, 1),
+  type: chosenType.value,
+  sourceId: chosenSourceId.value,
+  state: chosenState.value,
+}))
+
+const hasActiveFilters = computed(() =>
+  Object.values(eventListFilters.value).some(
+    (filterValue) => filterValue !== null && filterValue !== '',
+  ),
+)
 
 let nextRefreshTimeoutId: ReturnType<typeof setTimeout> | undefined
 let isUnmounted = false
@@ -24,9 +70,9 @@ let latestLoadNumber = 0
 // The next refresh is scheduled once the current one ends, so slow answers never overlap.
 async function loadEventsThenScheduleNextRefresh(): Promise<void> {
   const loadNumber = ++latestLoadNumber
-  const loadedEvents = await listEvents(appliedSearchedText.value).catch(() => null)
+  const loadedEvents = await listEvents(eventListFilters.value).catch(() => null)
 
-  // A newer load started meanwhile (a new search): its answer and its refresh loop win.
+  // A newer load started meanwhile (new search or filters): its answer and its refresh loop win.
   if (loadNumber !== latestLoadNumber || isUnmounted) {
     return
   }
@@ -42,13 +88,32 @@ async function loadEventsThenScheduleNextRefresh(): Promise<void> {
   nextRefreshTimeoutId = setTimeout(loadEventsThenScheduleNextRefresh, refreshDelayInMilliseconds)
 }
 
-function applySearch(): void {
-  appliedSearchedText.value = (searchedText.value ?? '').trim()
+function reloadEventsNow(): void {
   clearTimeout(nextRefreshTimeoutId)
   void loadEventsThenScheduleNextRefresh()
 }
 
-onMounted(loadEventsThenScheduleNextRefresh)
+function applySearch(): void {
+  appliedSearchedText.value = (searchedText.value ?? '').trim()
+  reloadEventsNow()
+}
+
+watch([receivedFromDate, receivedToDate, chosenType, chosenSourceId, chosenState], reloadEventsNow)
+
+// Without the choices, the type and source filters stay empty but the list still works.
+async function loadFilterChoices(): Promise<void> {
+  const [loadedSources, loadedEventTypes] = await Promise.all([
+    listSources().catch(() => []),
+    listEventTypes().catch(() => []),
+  ])
+  sources.value = loadedSources
+  eventTypes.value = loadedEventTypes
+}
+
+onMounted(() => {
+  void loadEventsThenScheduleNextRefresh()
+  void loadFilterChoices()
+})
 
 onUnmounted(() => {
   isUnmounted = true
@@ -73,10 +138,58 @@ onUnmounted(() => {
       />
     </v-form>
 
+    <v-row class="mb-4" dense>
+      <v-col cols="12" sm="6" md="2">
+        <v-text-field v-model="receivedFromDate" label="Received from" type="date" hide-details />
+      </v-col>
+      <v-col cols="12" sm="6" md="2">
+        <v-text-field v-model="receivedToDate" label="Received to" type="date" hide-details />
+      </v-col>
+      <v-col cols="12" sm="4" md="3">
+        <v-select
+          v-model="chosenType"
+          label="Type"
+          :items="eventTypes"
+          item-title="slug"
+          item-value="slug"
+          placeholder="Any type"
+          persistent-placeholder
+          clearable
+          hide-details
+        />
+      </v-col>
+      <v-col cols="12" sm="4" md="3">
+        <v-select
+          v-model="chosenSourceId"
+          label="Source"
+          :items="sources"
+          item-title="slug"
+          item-value="id"
+          placeholder="Any source"
+          persistent-placeholder
+          clearable
+          hide-details
+        />
+      </v-col>
+      <v-col cols="12" sm="4" md="2">
+        <v-select
+          v-model="chosenState"
+          label="State"
+          :items="stateChoices"
+          item-title="label"
+          item-value="state"
+          placeholder="Any state"
+          persistent-placeholder
+          clearable
+          hide-details
+        />
+      </v-col>
+    </v-row>
+
     <v-alert v-if="loadingErrorMessage" type="error" :text="loadingErrorMessage" />
     <v-progress-linear v-else-if="isLoading" indeterminate />
     <p v-else-if="receivedEvents.length === 0" class="text-medium-emphasis">
-      {{ appliedSearchedText === '' ? 'No event received yet.' : 'No event matches this search.' }}
+      {{ hasActiveFilters ? 'No event matches the search and filters.' : 'No event received yet.' }}
     </p>
 
     <v-table v-else>
