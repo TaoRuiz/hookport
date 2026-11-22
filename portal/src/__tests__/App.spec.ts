@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, type Router } from 'vue-router'
 import { createVuetify } from 'vuetify'
@@ -22,6 +22,9 @@ async function mountAppSignedInAsAdmin(router: Router) {
 
   return mount(App, { global: { plugins: [createVuetify(), router] } })
 }
+
+// Menus and tooltips render outside the wrapper: unmounting removes them before the next test.
+enableAutoUnmount(afterEach)
 
 describe('App', () => {
   let router: Router
@@ -60,6 +63,74 @@ describe('App', () => {
     const wrapper = mount(App, { global: { plugins: [createVuetify(), router] } })
 
     expect(wrapper.find('header .v-avatar').classes()).toContain(expectedColorClass)
+  })
+
+  it('shows a chevron on the user badge to signal its menu', async () => {
+    const wrapper = await mountAppSignedInAsAdmin(router)
+
+    expect(wrapper.find('header .v-btn:has(.v-avatar) .mdi-chevron-down').exists()).toBe(true)
+  })
+
+  it('opens a user menu offering a theme switch and sign out', async () => {
+    const wrapper = await mountAppSignedInAsAdmin(router)
+
+    await wrapper.find('header .v-btn:has(.v-avatar)').trigger('click')
+    await flushPromises()
+
+    const userMenu = document.body.querySelector('.v-menu.v-overlay--active')!
+    expect(userMenu.textContent).toContain('Dark theme')
+    expect(
+      userMenu.querySelector<HTMLInputElement>('input[aria-label="Dark theme"]')!.checked,
+    ).toBe(false)
+    expect(userMenu.textContent).toContain('Sign out')
+  })
+
+  it('switches to the dark theme from the user menu and remembers it', async () => {
+    const wrapper = await mountAppSignedInAsAdmin(router)
+
+    await wrapper.find('header .v-btn:has(.v-avatar)').trigger('click')
+    await flushPromises()
+    document.body
+      .querySelector<HTMLInputElement>('.v-menu.v-overlay--active input[aria-label="Dark theme"]')!
+      .click()
+    await flushPromises()
+
+    expect(wrapper.find('.v-application').classes()).toContain('v-theme--dark')
+    expect(JSON.parse(localStorage.getItem('hookport.userPreferences')!).themeName).toBe('dark')
+  })
+
+  it('closes the user menu once the theme is switched', async () => {
+    const wrapper = await mountAppSignedInAsAdmin(router)
+
+    await wrapper.find('header .v-btn:has(.v-avatar)').trigger('click')
+    await flushPromises()
+    document.body
+      .querySelector<HTMLInputElement>('.v-menu.v-overlay--active input[aria-label="Dark theme"]')!
+      .click()
+    await flushPromises()
+
+    expect(document.body.querySelector('.v-menu.v-overlay--active')).toBeNull()
+  })
+
+  it('closes the user menu when the pointer leaves it', async () => {
+    const wrapper = await mountAppSignedInAsAdmin(router)
+
+    await wrapper.find('header .v-btn:has(.v-avatar)').trigger('click')
+    await flushPromises()
+    document.body
+      .querySelector('.v-menu.v-overlay--active .v-card')!
+      .dispatchEvent(new MouseEvent('mouseleave'))
+    await flushPromises()
+
+    expect(document.body.querySelector('.v-menu.v-overlay--active')).toBeNull()
+  })
+
+  it('opens with the theme chosen on the last visit', async () => {
+    localStorage.setItem('hookport.userPreferences', JSON.stringify({ themeName: 'dark' }))
+
+    const wrapper = await mountAppSignedInAsAdmin(router)
+
+    expect(wrapper.find('.v-application').classes()).toContain('v-theme--dark')
   })
 
   it('separates the monitoring pages from the configuration pages in the navigation', async () => {

@@ -3,12 +3,17 @@ import { defineStore } from 'pinia'
 
 const USER_PREFERENCES_STORAGE_KEY = 'hookport.userPreferences'
 
+export type ThemeName = 'light' | 'dark'
+
 interface UserPreferences {
   isNavigationCollapsedToIcons: boolean
+  /** Null follows the operating system theme. */
+  themeName: ThemeName | null
 }
 
 const DEFAULT_USER_PREFERENCES: UserPreferences = {
   isNavigationCollapsedToIcons: false,
+  themeName: null,
 }
 
 function readStoredUserPreferences(): UserPreferences {
@@ -36,14 +41,22 @@ function storeUserPreferences(userPreferences: UserPreferences): void {
 export const useUserPreferencesStore = defineStore('userPreferences', () => {
   const storedUserPreferences = readStoredUserPreferences()
   const isNavigationCollapsedToIcons = ref(storedUserPreferences.isNavigationCollapsedToIcons)
+  const themeName = ref(storedUserPreferences.themeName)
 
-  watch([isNavigationCollapsedToIcons], () => {
-    storeUserPreferences({ isNavigationCollapsedToIcons: isNavigationCollapsedToIcons.value })
+  watch([isNavigationCollapsedToIcons, themeName], () => {
+    storeUserPreferences({
+      isNavigationCollapsedToIcons: isNavigationCollapsedToIcons.value,
+      themeName: themeName.value,
+    })
   })
 
   function toggleNavigationCollapsedToIcons(): void {
     isNavigationCollapsedToIcons.value = !isNavigationCollapsedToIcons.value
   }
 
-  return { isNavigationCollapsedToIcons, toggleNavigationCollapsedToIcons }
+  function chooseTheme(chosenThemeName: ThemeName): void {
+    themeName.value = chosenThemeName
+  }
+
+  return { isNavigationCollapsedToIcons, themeName, toggleNavigationCollapsedToIcons, chooseTheme }
 })

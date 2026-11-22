@@ -30,7 +30,20 @@ describe('userPreferences store', () => {
 
     expect(JSON.parse(localStorage.getItem(USER_PREFERENCES_STORAGE_KEY)!)).toEqual({
       isNavigationCollapsedToIcons: true,
+      themeName: null,
     })
+  })
+
+  it('follows the operating system theme when nothing is stored', () => {
+    expect(useUserPreferencesStore().themeName).toBeNull()
+  })
+
+  it('stores the chosen theme and restores it on the next visit', async () => {
+    useUserPreferencesStore().chooseTheme('dark')
+    await nextTick()
+    setActivePinia(createPinia())
+
+    expect(useUserPreferencesStore().themeName).toBe('dark')
   })
 
   it('falls back to defaults when the stored value is unreadable', () => {
