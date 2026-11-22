@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthenticatedUserStore } from '@/stores/authenticatedUser'
+import { useUserPreferencesStore } from '@/stores/userPreferences'
 
 const authenticatedUserStore = useAuthenticatedUserStore()
 const router = useRouter()
-const isNavigationCollapsedToIcons = ref(false)
+const userPreferencesStore = useUserPreferencesStore()
 
 const navigationGroups = [
   {
@@ -35,7 +35,7 @@ async function logOutAndGoToLogin(): Promise<void> {
       <template #prepend>
         <v-app-bar-nav-icon
           aria-label="Collapse or expand the navigation"
-          @click="isNavigationCollapsedToIcons = !isNavigationCollapsedToIcons"
+          @click="userPreferencesStore.toggleNavigationCollapsedToIcons"
         />
       </template>
       <v-spacer />
@@ -44,7 +44,7 @@ async function logOutAndGoToLogin(): Promise<void> {
     </v-app-bar>
     <v-navigation-drawer
       v-if="authenticatedUserStore.authenticatedUser"
-      :rail="isNavigationCollapsedToIcons"
+      :rail="userPreferencesStore.isNavigationCollapsedToIcons"
       permanent
     >
       <v-list nav density="compact">
@@ -52,7 +52,7 @@ async function logOutAndGoToLogin(): Promise<void> {
           v-for="(navigationGroup, groupIndex) in navigationGroups"
           :key="navigationGroup.title"
         >
-          <template v-if="isNavigationCollapsedToIcons">
+          <template v-if="userPreferencesStore.isNavigationCollapsedToIcons">
             <v-divider v-if="groupIndex > 0" class="my-2" />
           </template>
           <v-list-subheader v-else>{{ navigationGroup.title }}</v-list-subheader>
@@ -60,7 +60,7 @@ async function logOutAndGoToLogin(): Promise<void> {
             v-for="navigationLink in navigationGroup.links"
             :key="navigationLink.routeName"
             :text="navigationLink.title"
-            :disabled="!isNavigationCollapsedToIcons"
+            :disabled="!userPreferencesStore.isNavigationCollapsedToIcons"
             location="end"
           >
             <template #activator="{ props: tooltipActivatorProps }">

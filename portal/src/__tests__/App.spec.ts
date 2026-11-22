@@ -27,6 +27,7 @@ describe('App', () => {
   let router: Router
 
   beforeEach(() => {
+    localStorage.clear()
     setActivePinia(createPinia())
     router = createAppRouter(createMemoryHistory())
   })
@@ -71,6 +72,17 @@ describe('App', () => {
     await toggleButton.trigger('click')
     expect(wrapper.find('nav').classes()).not.toContain('v-navigation-drawer--rail')
     expect(wrapper.find('nav').text()).toContain('Configuration')
+  })
+
+  it('opens with the navigation collapsed when that was the last choice', async () => {
+    localStorage.setItem(
+      'hookport.userPreferences',
+      JSON.stringify({ isNavigationCollapsedToIcons: true }),
+    )
+
+    const wrapper = await mountAppSignedInAsAdmin(router)
+
+    expect(wrapper.find('nav').classes()).toContain('v-navigation-drawer--rail')
   })
 
   it('names a navigation icon on hover once the navigation is collapsed', async () => {
