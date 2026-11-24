@@ -5,8 +5,8 @@ import EventsView from '@/views/EventsView.vue'
 
 const deliveredEvent = {
   uuid: '01890000-0000-7000-8000-000000000001',
-  type: 'record.created',
-  source: { id: 1, slug: 'emitter-app' },
+  type: { slug: 'record.created', label: 'Record created' },
+  source: { id: 1, slug: 'emitter-app', name: 'Emitter app' },
   externalId: 'evt_1',
   receivedAt: '2026-11-10T10:00:00+00:00',
   state: 'delivered',
@@ -155,9 +155,21 @@ describe('EventsView', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0]!.text()).toContain('evt_2')
     expect(rows[0]!.text()).toContain('Needs attention')
+    expect(rows[1]!.text()).toContain('Record created')
     expect(rows[1]!.text()).toContain('record.created')
+    expect(rows[1]!.text()).toContain('Emitter app')
     expect(rows[1]!.text()).toContain('emitter-app')
     expect(rows[1]!.text()).toContain('Delivered')
+  })
+
+  it('shows the bare slug of a type missing from the catalog', async () => {
+    const eventOfUnknownType = { ...deliveredEvent, type: { slug: 'record.archived', label: null } }
+    stubFetchResponse(new Response(JSON.stringify([eventOfUnknownType])))
+
+    const wrapper = await mountEventsView()
+
+    const typeCell = wrapper.findAll('tbody tr td')[1]!
+    expect(typeCell.text()).toBe('record.archived')
   })
 
   it('links each event to its detail page', async () => {

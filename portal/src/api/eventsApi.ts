@@ -1,9 +1,15 @@
 export type EventState = 'unrouted' | 'in_progress' | 'delivered' | 'needs_attention'
 
+/** The label is null for a type missing from the catalog. */
+export interface ReceivedEventType {
+  slug: string
+  label: string | null
+}
+
 export interface ReceivedEvent {
   uuid: string
-  type: string
-  source: { id: number; slug: string }
+  type: ReceivedEventType
+  source: { id: number; slug: string; name: string }
   externalId: string
   receivedAt: string
   state: EventState
@@ -58,7 +64,10 @@ export interface EventDelivery extends EventDeliverySummary {
   nextAttemptAt: string | null
 }
 
-export interface ReceivedEventDetail extends ReceivedEvent {
+// The detail endpoint still sends the type as a plain slug and the source without its name.
+export interface ReceivedEventDetail extends Omit<ReceivedEvent, 'type' | 'source' | 'deliveries'> {
+  type: string
+  source: { id: number; slug: string }
   payload: unknown
   deliveries: EventDelivery[]
 }

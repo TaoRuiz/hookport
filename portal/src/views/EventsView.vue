@@ -235,10 +235,15 @@ onUnmounted(() => {
         <tr v-for="receivedEvent in receivedEvents" :key="receivedEvent.uuid">
           <td>{{ formatReceivedAt(receivedEvent.receivedAt) }}</td>
           <td>
-            <code>{{ receivedEvent.type }}</code>
+            <template v-if="receivedEvent.type.label">
+              <div>{{ receivedEvent.type.label }}</div>
+              <code class="text-caption text-medium-emphasis">{{ receivedEvent.type.slug }}</code>
+            </template>
+            <code v-else>{{ receivedEvent.type.slug }}</code>
           </td>
           <td>
-            <code>{{ receivedEvent.source.slug }}</code>
+            <div>{{ receivedEvent.source.name }}</div>
+            <code class="text-caption text-medium-emphasis">{{ receivedEvent.source.slug }}</code>
           </td>
           <td>
             <router-link :to="{ name: 'event-detail', params: { uuid: receivedEvent.uuid } }">
