@@ -6,6 +6,7 @@ use App\Entity\Delivery;
 use App\Entity\EventIn;
 use App\Entity\Source;
 use App\Enum\DeliveryStatus;
+use App\Tests\CreatesEventTypes;
 use App\Tests\CreatesSources;
 use App\Tests\CreatesTargets;
 use App\Tests\CreatesUsers;
@@ -16,6 +17,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 final class EventListControllerTest extends WebTestCase
 {
+    use CreatesEventTypes;
     use CreatesSources;
     use CreatesTargets;
     use CreatesUsers;
@@ -40,10 +42,22 @@ final class EventListControllerTest extends WebTestCase
         self::assertResponseIsSuccessful();
         $listedEvents = json_decode($this->client->getResponse()->getContent(), true);
         self::assertSame([(string) $newerEvent->getUuid(), (string) $olderEvent->getUuid()], array_column($listedEvents, 'uuid'));
-        self::assertSame('record.created', $listedEvents[0]['type']);
-        self::assertSame(['id' => $this->source->getId(), 'slug' => 'emitter-app'], $listedEvents[0]['source']);
+        self::assertSame(['slug' => 'record.created', 'label' => null], $listedEvents[0]['type']);
+        self::assertSame(['id' => $this->source->getId(), 'slug' => 'emitter-app', 'name' => 'Emitter-app'], $listedEvents[0]['source']);
         self::assertSame('evt_2', $listedEvents[0]['externalId']);
         self::assertArrayHasKey('receivedAt', $listedEvents[0]);
+    }
+
+    public function testListedEventCarriesTheLabelOfItsCatalogType(): void
+    {
+        $this->createEventType('record.created', 'Record created');
+        $this->storeEvent('evt_1');
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events');
+
+        $listedEvents = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(['slug' => 'record.created', 'label' => 'Record created'], $listedEvents[0]['type']);
     }
 
     /**

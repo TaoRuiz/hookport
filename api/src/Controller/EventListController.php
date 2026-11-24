@@ -21,7 +21,7 @@ final class EventListController extends AbstractController
         DeliveryRepository $deliveryRepository,
         #[MapQueryString(validationFailedStatusCode: 422)] EventListQuery $eventListQuery = new EventListQuery(),
     ): JsonResponse {
-        $eventRows = $eventInRepository->findWithSourceAndDeliveryCountsNewestFirst($eventListQuery);
+        $eventRows = $eventInRepository->findWithSourceTypeLabelAndDeliveryCountsNewestFirst($eventListQuery);
         $deliveriesByEventUuid = $deliveryRepository->findWithTargetGroupedByEventUuid(array_column($eventRows, 0));
 
         return $this->json(array_map(
@@ -31,8 +31,8 @@ final class EventListController extends AbstractController
     }
 
     /**
-     * @param array{0: EventIn, deliveriesCount: int|string, failedDeliveriesCount: int|string|null, ongoingDeliveriesCount: int|string|null} $eventRow
-     * @param list<Delivery>                                                                                                                  $deliveries
+     * @param array{0: EventIn, eventTypeLabel: ?string, deliveriesCount: int|string, failedDeliveriesCount: int|string|null, ongoingDeliveriesCount: int|string|null} $eventRow
+     * @param list<Delivery>                                                                                                                                           $deliveries
      *
      * @return array<string, mixed>
      */
@@ -42,8 +42,12 @@ final class EventListController extends AbstractController
 
         return [
             'uuid' => $eventIn->getUuid(),
-            'type' => $eventIn->getType(),
-            'source' => ['id' => $eventIn->getSource()->getId(), 'slug' => $eventIn->getSource()->getSlug()],
+            'type' => ['slug' => $eventIn->getType(), 'label' => $eventRow['eventTypeLabel']],
+            'source' => [
+                'id' => $eventIn->getSource()->getId(),
+                'slug' => $eventIn->getSource()->getSlug(),
+                'name' => $eventIn->getSource()->getName(),
+            ],
             'externalId' => $eventIn->getExternalId(),
             'receivedAt' => $eventIn->getReceivedAt(),
             'state' => EventState::fromDeliveryCounts(

@@ -4,9 +4,11 @@ namespace App\Repository;
 
 use App\Dto\EventListQuery;
 use App\Entity\EventIn;
+use App\Entity\EventType;
 use App\Enum\DeliveryStatus;
 use App\Enum\EventState;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
+use Doctrine\ORM\Query\Expr\Join;
 use Doctrine\ORM\QueryBuilder;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -27,19 +29,23 @@ class EventInRepository extends ServiceEntityRepository
     /**
      * Counts are aggregated in the query so the list never loads every delivery.
      * The search keeps the events whose external id, type or payload contains the text, ignoring case.
+     * The type label is null for a type missing from the catalog.
      *
-     * @return list<array{0: EventIn, deliveriesCount: int|string, failedDeliveriesCount: int|string|null, ongoingDeliveriesCount: int|string|null}>
+     * @return list<array{0: EventIn, eventTypeLabel: ?string, deliveriesCount: int|string, failedDeliveriesCount: int|string|null, ongoingDeliveriesCount: int|string|null}>
      */
-    public function findWithSourceAndDeliveryCountsNewestFirst(EventListQuery $eventListQuery): array
+    public function findWithSourceTypeLabelAndDeliveryCountsNewestFirst(EventListQuery $eventListQuery): array
     {
         $queryBuilder = $this->createQueryBuilder('eventIn')
             ->addSelect('source')
+            ->addSelect('eventType.label AS eventTypeLabel')
             ->addSelect(self::DELIVERIES_COUNT.' AS deliveriesCount')
             ->addSelect(self::FAILED_DELIVERIES_COUNT.' AS failedDeliveriesCount')
             ->addSelect(self::ONGOING_DELIVERIES_COUNT.' AS ongoingDeliveriesCount')
             ->innerJoin('eventIn.source', 'source')
+            // The type is a plain slug, not a relation: unknown types are stored too.
+            ->leftJoin(EventType::class, 'eventType', Join::WITH, 'eventType.slug = eventIn.type')
             ->leftJoin('eventIn.deliveries', 'delivery')
-            ->groupBy('eventIn.uuid', 'source.id')
+            ->groupBy('eventIn.uuid', 'source.id', 'eventType.id')
             ->orderBy('eventIn.receivedAt', 'DESC')
             // received_at has a one-second precision; uuid v7 is time-ordered and breaks ties.
             ->addOrderBy('eventIn.uuid', 'DESC')
