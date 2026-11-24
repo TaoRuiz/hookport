@@ -114,13 +114,22 @@ onUnmounted(() => {
           <tr>
             <th>Type</th>
             <td>
-              <code>{{ receivedEvent.type }}</code>
+              <template v-if="receivedEvent.type.label">
+                {{ receivedEvent.type.label }}
+                <code class="text-caption text-medium-emphasis ml-2">{{
+                  receivedEvent.type.slug
+                }}</code>
+              </template>
+              <code v-else>{{ receivedEvent.type.slug }}</code>
             </td>
           </tr>
           <tr>
             <th>Source</th>
             <td>
-              <code>{{ receivedEvent.source.slug }}</code>
+              {{ receivedEvent.source.name }}
+              <code class="text-caption text-medium-emphasis ml-2">{{
+                receivedEvent.source.slug
+              }}</code>
             </td>
           </tr>
           <tr>

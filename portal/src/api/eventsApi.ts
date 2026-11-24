@@ -64,10 +64,7 @@ export interface EventDelivery extends EventDeliverySummary {
   nextAttemptAt: string | null
 }
 
-// The detail endpoint still sends the type as a plain slug and the source without its name.
-export interface ReceivedEventDetail extends Omit<ReceivedEvent, 'type' | 'source' | 'deliveries'> {
-  type: string
-  source: { id: number; slug: string }
+export interface ReceivedEventDetail extends Omit<ReceivedEvent, 'deliveries'> {
   payload: unknown
   deliveries: EventDelivery[]
 }
