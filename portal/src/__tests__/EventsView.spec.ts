@@ -391,7 +391,7 @@ describe('EventsView', () => {
 
     const wrapper = await mountEventsView()
 
-    expect(wrapper.text()).toContain('25 events')
+    expect(wrapper.text()).toContain('1–1 of 25')
     expect(wrapper.find('.v-pagination').exists()).toBe(false)
   })
 
@@ -406,7 +406,7 @@ describe('EventsView', () => {
     await goToPage(2, wrapper)
     await waitForNextRefresh()
 
-    expect(wrapper.text()).toContain('60 events')
+    expect(wrapper.text()).toContain('26–26 of 60')
     expect(eventListUrls().slice(1)).toEqual([
       '/api/events?page=2&perPage=25',
       '/api/events?page=2&perPage=25',

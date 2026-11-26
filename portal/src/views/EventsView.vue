@@ -18,6 +18,10 @@ const receivedEvents = ref<ReceivedEvent[]>([])
 const totalEventsCount = ref(0)
 const currentPage = ref(1)
 const pageCount = computed(() => Math.ceil(totalEventsCount.value / EVENTS_PER_PAGE))
+const firstShownEventNumber = computed(() => (currentPage.value - 1) * EVENTS_PER_PAGE + 1)
+const lastShownEventNumber = computed(
+  () => firstShownEventNumber.value + receivedEvents.value.length - 1,
+)
 const isLoading = ref(true)
 const loadingErrorMessage = ref<string | null>(null)
 
@@ -302,7 +306,9 @@ onUnmounted(() => {
     </v-table>
 
     <div v-if="receivedEvents.length > 0" class="d-flex align-center mt-2">
-      <span class="text-body-2 text-medium-emphasis">{{ totalEventsCount }} events</span>
+      <span class="text-body-2 text-medium-emphasis">
+        {{ firstShownEventNumber }}–{{ lastShownEventNumber }} of {{ totalEventsCount }}
+      </span>
       <v-spacer />
       <v-pagination
         v-if="pageCount > 1"
