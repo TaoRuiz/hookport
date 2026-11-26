@@ -23,44 +23,80 @@ class EventInRepository extends ServiceEntityRepository
     }
 
     private const string DELIVERIES_COUNT = 'COUNT(delivery.uuid)';
-    private const string FAILED_DELIVERIES_COUNT = 'SUM(CASE WHEN delivery.status = :failedStatus THEN 1 ELSE 0 END)';
-    private const string ONGOING_DELIVERIES_COUNT = 'SUM(CASE WHEN delivery.status IN (:ongoingStatuses) THEN 1 ELSE 0 END)';
+    // Statuses are inlined rather than bound: the count subquery only uses them when filtering by state.
+    private const string FAILED_DELIVERIES_COUNT = "SUM(CASE WHEN delivery.status = '".DeliveryStatus::Failed->value."' THEN 1 ELSE 0 END)";
+    private const string ONGOING_DELIVERIES_COUNT = "SUM(CASE WHEN delivery.status IN ('".DeliveryStatus::Pending->value."', '".DeliveryStatus::Retrying->value."') THEN 1 ELSE 0 END)";
 
     /**
      * Counts are aggregated in the query so the list never loads every delivery.
-     * The search keeps the events whose external id, type or payload contains the text, ignoring case.
      * The type label is null for a type missing from the catalog.
      *
      * @return list<array{0: EventIn, eventTypeLabel: ?string, deliveriesCount: int|string, failedDeliveriesCount: int|string|null, ongoingDeliveriesCount: int|string|null}>
      */
-    public function findWithSourceTypeLabelAndDeliveryCountsNewestFirst(EventListQuery $eventListQuery): array
+    public function findPageWithSourceTypeLabelAndDeliveryCountsNewestFirst(EventListQuery $eventListQuery): array
     {
-        $queryBuilder = $this->createQueryBuilder('eventIn')
+        return $this->createFilteredEventsQueryBuilder($eventListQuery)
             ->addSelect('source')
             ->addSelect('eventType.label AS eventTypeLabel')
             ->addSelect(self::DELIVERIES_COUNT.' AS deliveriesCount')
             ->addSelect(self::FAILED_DELIVERIES_COUNT.' AS failedDeliveriesCount')
             ->addSelect(self::ONGOING_DELIVERIES_COUNT.' AS ongoingDeliveriesCount')
-            ->innerJoin('eventIn.source', 'source')
             // The type is a plain slug, not a relation: unknown types are stored too.
             ->leftJoin(EventType::class, 'eventType', Join::WITH, 'eventType.slug = eventIn.type')
-            ->leftJoin('eventIn.deliveries', 'delivery')
-            ->groupBy('eventIn.uuid', 'source.id', 'eventType.id')
+            ->addGroupBy('source.id')
+            ->addGroupBy('eventType.id')
             ->orderBy('eventIn.receivedAt', 'DESC')
             // received_at has a one-second precision; uuid v7 is time-ordered and breaks ties.
             ->addOrderBy('eventIn.uuid', 'DESC')
-            ->setParameter('failedStatus', DeliveryStatus::Failed->value)
-            ->setParameter('ongoingStatuses', [DeliveryStatus::Pending->value, DeliveryStatus::Retrying->value]);
+            ->setFirstResult(($eventListQuery->page - 1) * $eventListQuery->perPage)
+            ->setMaxResults($eventListQuery->perPage)
+            ->getQuery()
+            ->getResult();
+    }
+
+    /**
+     * The state filter is a HAVING on aggregates, so the grouped events are counted through a subquery.
+     */
+    public function countEventsMatching(EventListQuery $eventListQuery): int
+    {
+        $filteredEventsQueryBuilder = $this->createFilteredEventsQueryBuilder($eventListQuery)->select('eventIn.uuid');
+
+        $countQueryBuilder = $this->createQueryBuilder('countedEvent')->select('COUNT(countedEvent.uuid)');
+
+        return (int) $countQueryBuilder
+            ->where($countQueryBuilder->expr()->in('countedEvent.uuid', $filteredEventsQueryBuilder->getDQL()))
+            ->setParameters($filteredEventsQueryBuilder->getParameters())
+            ->getQuery()
+            ->getSingleScalarResult();
+    }
+
+    /**
+     * The search keeps the events whose external id, type or payload contains the text, ignoring case.
+     */
+    private function createFilteredEventsQueryBuilder(EventListQuery $eventListQuery): QueryBuilder
+    {
+        $queryBuilder = $this->createQueryBuilder('eventIn')
+            ->innerJoin('eventIn.source', 'source')
+            ->leftJoin('eventIn.deliveries', 'delivery')
+            ->groupBy('eventIn.uuid');
 
         $this->keepEventsContainingSearchedText($queryBuilder, $eventListQuery->search);
         $this->keepEventsMatchingFields($queryBuilder, $eventListQuery);
-        if ([] !== $eventListQuery->states) {
-            $queryBuilder->andHaving($queryBuilder->expr()->orX(
-                ...array_map($this->buildEventStateCondition(...), $eventListQuery->states),
-            ));
+        $this->keepEventsInStates($queryBuilder, $eventListQuery->states);
+
+        return $queryBuilder;
+    }
+
+    /**
+     * @param list<EventState> $eventStates
+     */
+    private function keepEventsInStates(QueryBuilder $queryBuilder, array $eventStates): void
+    {
+        if ([] === $eventStates) {
+            return;
         }
 
-        return $queryBuilder->getQuery()->getResult();
+        $queryBuilder->andHaving($queryBuilder->expr()->orX(...array_map($this->buildEventStateCondition(...), $eventStates)));
     }
 
     private function keepEventsContainingSearchedText(QueryBuilder $queryBuilder, ?string $searchedText): void

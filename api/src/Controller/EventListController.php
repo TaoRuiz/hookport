@@ -21,13 +21,16 @@ final class EventListController extends AbstractController
         DeliveryRepository $deliveryRepository,
         #[MapQueryString(validationFailedStatusCode: 422)] EventListQuery $eventListQuery = new EventListQuery(),
     ): JsonResponse {
-        $eventRows = $eventInRepository->findWithSourceTypeLabelAndDeliveryCountsNewestFirst($eventListQuery);
+        $eventRows = $eventInRepository->findPageWithSourceTypeLabelAndDeliveryCountsNewestFirst($eventListQuery);
         $deliveriesByEventUuid = $deliveryRepository->findWithTargetGroupedByEventUuid(array_column($eventRows, 0));
 
-        return $this->json(array_map(
-            fn (array $eventRow): array => $this->describeEventRow($eventRow, $deliveriesByEventUuid[(string) $eventRow[0]->getUuid()] ?? []),
-            $eventRows,
-        ));
+        return $this->json([
+            'events' => array_map(
+                fn (array $eventRow): array => $this->describeEventRow($eventRow, $deliveriesByEventUuid[(string) $eventRow[0]->getUuid()] ?? []),
+                $eventRows,
+            ),
+            'totalCount' => $eventInRepository->countEventsMatching($eventListQuery),
+        ]);
     }
 
     /**
