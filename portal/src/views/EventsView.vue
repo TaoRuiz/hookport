@@ -220,7 +220,7 @@ onUnmounted(() => {
       {{ hasActiveFilters ? 'No event matches the search and filters.' : 'No event received yet.' }}
     </p>
 
-    <v-table v-else>
+    <v-table v-else density="compact">
       <thead>
         <tr>
           <th>Received at</th>
@@ -237,7 +237,7 @@ onUnmounted(() => {
           <td>
             <template v-if="receivedEvent.type.label">
               <div>{{ receivedEvent.type.label }}</div>
-              <code class="text-caption text-medium-emphasis">{{ receivedEvent.type.slug }}</code>
+              <code class="text-caption text-disabled">{{ receivedEvent.type.slug }}</code>
             </template>
             <code v-else>{{ receivedEvent.type.slug }}</code>
           </td>
