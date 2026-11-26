@@ -107,11 +107,8 @@ async function chooseSeveralInSelect(selectLabel: string, optionTitles: string[]
   }
 }
 
-async function clickRowButton(buttonText: string) {
-  await page
-    .findAll('tbody button')
-    .find((button) => button.text() === buttonText)!
-    .trigger('click')
+async function clickRowButton(buttonLabel: string) {
+  await page.find(`tbody button[aria-label="${buttonLabel}"]`).trigger('click')
   await flushPromises()
 }
 
@@ -324,7 +321,7 @@ describe('MappingsView', () => {
 
     const wrapper = await mountMappingsView()
 
-    expect(wrapper.find('tbody').text()).not.toContain('Max attempts')
+    expect(wrapper.find('tbody button[aria-label="Edit max attempts"]').exists()).toBe(false)
     expect(wrapper.find('tbody input[type="checkbox"]').exists()).toBe(false)
   })
 
@@ -368,7 +365,7 @@ describe('MappingsView', () => {
     )
     const wrapper = await mountMappingsView()
 
-    await clickRowButton('Max attempts')
+    await clickRowButton('Edit max attempts')
     await page.find('.v-dialog input[type="number"]').setValue('8')
     await flushPromises()
     await page.find('.v-dialog form').trigger('submit')
@@ -387,7 +384,7 @@ describe('MappingsView', () => {
     stubFetchResponses(jsonResponse(200, [specificMapping]))
     await mountMappingsView()
 
-    await clickRowButton('Max attempts')
+    await clickRowButton('Edit max attempts')
     await page.find('.v-dialog input[type="number"]').setValue('11')
     await flushPromises()
     await page.find('.v-dialog form').trigger('submit')
@@ -402,7 +399,7 @@ describe('MappingsView', () => {
     stubFetchResponses(jsonResponse(200, [specificMapping]), jsonResponse(500, {}))
     const wrapper = await mountMappingsView()
 
-    await clickRowButton('Max attempts')
+    await clickRowButton('Edit max attempts')
     await page.find('.v-dialog form').trigger('submit')
     await flushPromises()
 

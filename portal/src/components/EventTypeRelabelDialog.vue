@@ -42,9 +42,18 @@ async function submitEventTypeRelabel(): Promise<void> {
 </script>
 
 <template>
-  <v-btn variant="text" size="small" prepend-icon="mdi-pencil" @click="openFormWithCurrentLabel">
-    Rename
-  </v-btn>
+  <v-tooltip text="Rename" location="top">
+    <template #activator="{ props: tooltipActivatorProps }">
+      <v-btn
+        v-bind="tooltipActivatorProps"
+        icon="mdi-pencil"
+        variant="text"
+        size="small"
+        aria-label="Rename"
+        @click="openFormWithCurrentLabel"
+      />
+    </template>
+  </v-tooltip>
 
   <v-dialog v-model="isOpen" max-width="560">
     <v-card :title="`Rename ${eventType.slug}`">

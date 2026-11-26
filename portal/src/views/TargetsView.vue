@@ -69,12 +69,16 @@ onMounted(async () => {
       />
     </div>
 
-    <v-switch
-      v-model="isShowingDisabledTargets"
-      label="Show disabled targets"
-      color="primary"
-      hide-details
-    />
+    <div class="d-flex justify-end">
+      <v-switch
+        v-model="isShowingDisabledTargets"
+        label="Show disabled targets"
+        color="primary"
+        hide-details
+        density="compact"
+        class="flex-grow-0"
+      />
+    </div>
 
     <v-alert
       v-if="statusChangeErrorMessage"
@@ -89,14 +93,14 @@ onMounted(async () => {
     <v-progress-linear v-else-if="isLoading" indeterminate />
     <p v-else-if="visibleTargets.length === 0" class="text-medium-emphasis">No target to show.</p>
 
-    <v-table v-else>
+    <v-table v-else density="compact">
       <thead>
         <tr>
           <th>Name</th>
           <th>Protocol</th>
           <th>URL</th>
           <th>Status</th>
-          <th v-if="authenticatedUserStore.canManageConfiguration">Actions</th>
+          <th v-if="authenticatedUserStore.canManageConfiguration" class="text-end">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -107,20 +111,22 @@ onMounted(async () => {
             <code>{{ target.config.url }}</code>
           </td>
           <td>
-            <v-chip :color="target.enabled ? 'success' : 'grey'" size="small">
+            <v-switch
+              v-if="authenticatedUserStore.canManageConfiguration"
+              :model-value="target.enabled"
+              :label="target.enabled ? 'Enabled' : 'Disabled'"
+              :aria-label="`Enable ${target.name}`"
+              color="success"
+              density="compact"
+              hide-details
+              @update:model-value="switchTargetEnabled(target, Boolean($event))"
+            />
+            <v-chip v-else :color="target.enabled ? 'success' : 'grey'" size="small">
               {{ target.enabled ? 'Enabled' : 'Disabled' }}
             </v-chip>
           </td>
           <td v-if="authenticatedUserStore.canManageConfiguration">
-            <div class="d-flex align-center ga-2">
-              <v-switch
-                :model-value="target.enabled"
-                :aria-label="`Enable ${target.name}`"
-                color="success"
-                density="compact"
-                hide-details
-                @update:model-value="switchTargetEnabled(target, Boolean($event))"
-              />
+            <div class="d-flex justify-end ga-1">
               <TargetEditDialog :target="target" @modified="replaceTargetInList" />
               <TargetSecretDialog :target="target" />
             </div>

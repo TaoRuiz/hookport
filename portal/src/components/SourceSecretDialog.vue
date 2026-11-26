@@ -23,9 +23,18 @@ async function openAndLoadSecret(): Promise<void> {
 </script>
 
 <template>
-  <v-btn variant="text" size="small" prepend-icon="mdi-key" @click="openAndLoadSecret">
-    Show secret
-  </v-btn>
+  <v-tooltip text="Show secret" location="top">
+    <template #activator="{ props: tooltipActivatorProps }">
+      <v-btn
+        v-bind="tooltipActivatorProps"
+        icon="mdi-key"
+        variant="text"
+        size="small"
+        aria-label="Show secret"
+        @click="openAndLoadSecret"
+      />
+    </template>
+  </v-tooltip>
 
   <v-dialog v-model="isOpen" max-width="560">
     <v-card :title="`Secret of ${source.slug}`">

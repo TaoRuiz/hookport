@@ -42,14 +42,18 @@ async function submitMaxAttemptsChange(): Promise<void> {
 </script>
 
 <template>
-  <v-btn
-    variant="text"
-    size="small"
-    prepend-icon="mdi-pencil"
-    @click="openFormWithCurrentMaxAttempts"
-  >
-    Max attempts
-  </v-btn>
+  <v-tooltip text="Edit max attempts" location="top">
+    <template #activator="{ props: tooltipActivatorProps }">
+      <v-btn
+        v-bind="tooltipActivatorProps"
+        icon="mdi-pencil"
+        variant="text"
+        size="small"
+        aria-label="Edit max attempts"
+        @click="openFormWithCurrentMaxAttempts"
+      />
+    </template>
+  </v-tooltip>
 
   <v-dialog v-model="isOpen" max-width="560">
     <v-card title="Change max attempts">

@@ -179,7 +179,7 @@ describe('TargetsView', () => {
 
     const wrapper = await mountTargetsView()
 
-    expect(wrapper.find('tbody').text()).not.toContain('Show secret')
+    expect(wrapper.find('tbody button[aria-label="Show secret"]').exists()).toBe(false)
     expect(wrapper.find('tbody input[type="checkbox"]').exists()).toBe(false)
   })
 
@@ -223,10 +223,7 @@ describe('TargetsView', () => {
     )
     const wrapper = await mountTargetsView()
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Show secret')!
-      .trigger('click')
+    await wrapper.find('button[aria-label="Show secret"]').trigger('click')
     await flushPromises()
 
     expect(fetch).toHaveBeenLastCalledWith('/api/targets/1/secret')
@@ -250,10 +247,7 @@ describe('TargetsView', () => {
     )
     const wrapper = await mountTargetsView()
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Edit')!
-      .trigger('click')
+    await wrapper.find('button[aria-label="Edit"]').trigger('click')
     await flushPromises()
     const [nameInput, urlInput] = page.findAll('.v-dialog form input')
     await nameInput!.setValue('Zulu receiver')
@@ -277,10 +271,7 @@ describe('TargetsView', () => {
     stubFetchResponses(jsonResponse(200, [enabledTarget]), jsonResponse(500, {}))
     const wrapper = await mountTargetsView()
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Edit')!
-      .trigger('click')
+    await wrapper.find('button[aria-label="Edit"]').trigger('click')
     await flushPromises()
     await page.find('.v-dialog form').trigger('submit')
     await flushPromises()

@@ -40,9 +40,18 @@ async function submitTargetModification(): Promise<void> {
 </script>
 
 <template>
-  <v-btn variant="text" size="small" prepend-icon="mdi-pencil" @click="openFormWithCurrentValues">
-    Edit
-  </v-btn>
+  <v-tooltip text="Edit" location="top">
+    <template #activator="{ props: tooltipActivatorProps }">
+      <v-btn
+        v-bind="tooltipActivatorProps"
+        icon="mdi-pencil"
+        variant="text"
+        size="small"
+        aria-label="Edit"
+        @click="openFormWithCurrentValues"
+      />
+    </template>
+  </v-tooltip>
 
   <v-dialog v-model="isOpen" max-width="560">
     <v-card :title="`Edit ${target.name}`">

@@ -68,12 +68,16 @@ onMounted(async () => {
       />
     </div>
 
-    <v-switch
-      v-model="isShowingDisabledSources"
-      label="Show disabled sources"
-      color="primary"
-      hide-details
-    />
+    <div class="d-flex justify-end">
+      <v-switch
+        v-model="isShowingDisabledSources"
+        label="Show disabled sources"
+        color="primary"
+        hide-details
+        density="compact"
+        class="flex-grow-0"
+      />
+    </div>
 
     <v-alert
       v-if="statusChangeErrorMessage"
@@ -88,13 +92,13 @@ onMounted(async () => {
     <v-progress-linear v-else-if="isLoading" indeterminate />
     <p v-else-if="visibleSources.length === 0" class="text-medium-emphasis">No source to show.</p>
 
-    <v-table v-else>
+    <v-table v-else density="compact">
       <thead>
         <tr>
           <th>Name</th>
           <th>Slug</th>
           <th>Status</th>
-          <th v-if="authenticatedUserStore.canManageConfiguration">Actions</th>
+          <th v-if="authenticatedUserStore.canManageConfiguration" class="text-end">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -104,20 +108,22 @@ onMounted(async () => {
             <code>{{ source.slug }}</code>
           </td>
           <td>
-            <v-chip :color="source.enabled ? 'success' : 'grey'" size="small">
+            <v-switch
+              v-if="authenticatedUserStore.canManageConfiguration"
+              :model-value="source.enabled"
+              :label="source.enabled ? 'Enabled' : 'Disabled'"
+              :aria-label="`Enable ${source.slug}`"
+              color="success"
+              density="compact"
+              hide-details
+              @update:model-value="switchSourceEnabled(source, Boolean($event))"
+            />
+            <v-chip v-else :color="source.enabled ? 'success' : 'grey'" size="small">
               {{ source.enabled ? 'Enabled' : 'Disabled' }}
             </v-chip>
           </td>
           <td v-if="authenticatedUserStore.canManageConfiguration">
-            <div class="d-flex align-center ga-2">
-              <v-switch
-                :model-value="source.enabled"
-                :aria-label="`Enable ${source.slug}`"
-                color="success"
-                density="compact"
-                hide-details
-                @update:model-value="switchSourceEnabled(source, Boolean($event))"
-              />
+            <div class="d-flex justify-end ga-1">
               <SourceRenameDialog :source="source" @renamed="replaceSourceInList" />
               <SourceSecretDialog :source="source" />
             </div>
