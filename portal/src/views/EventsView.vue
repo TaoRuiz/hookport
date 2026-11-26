@@ -36,6 +36,11 @@ const chosenStates = ref<EventState[]>([...allEventStates])
 const sources = ref<Source[]>([])
 const eventTypes = ref<EventType[]>([])
 
+// The slug is what emitters send: shown under each readable name, it helps match raw events.
+function describeSlugAsSubtitle(sourceOrEventType: { slug: string }): { subtitle: string } {
+  return { subtitle: sourceOrEventType.slug }
+}
+
 function convertLocalDateToIsoString(localDate: Date, daysToAdd = 0): string {
   const midnight = new Date(localDate)
   midnight.setHours(0, 0, 0, 0)
@@ -173,8 +178,9 @@ onUnmounted(() => {
           v-model="chosenType"
           label="Type"
           :items="eventTypes"
-          item-title="slug"
+          item-title="label"
           item-value="slug"
+          :item-props="describeSlugAsSubtitle"
           placeholder="Any type"
           persistent-placeholder
           density="compact"
@@ -188,8 +194,9 @@ onUnmounted(() => {
           v-model="chosenSourceId"
           label="Source"
           :items="sources"
-          item-title="slug"
+          item-title="name"
           item-value="id"
+          :item-props="describeSlugAsSubtitle"
           placeholder="Any source"
           persistent-placeholder
           density="compact"

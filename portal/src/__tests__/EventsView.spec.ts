@@ -82,15 +82,20 @@ function lastEventListUrl(): string {
   return urls[urls.length - 1]!
 }
 
-async function chooseInFilter(selectLabel: string, optionTitle: string, wrapper: VueWrapper) {
+async function openFilterOptions(selectLabel: string, wrapper: VueWrapper) {
   const select = wrapper
     .findAll('.v-select')
     .find((candidate) => candidate.find('label').text() === selectLabel)!
   await select.find('.v-field').trigger('mousedown')
   await flushPromises()
-  await new DOMWrapper(document.body)
-    .findAll('.v-overlay--active .v-list-item')
-    .find((option) => option.text() === optionTitle)!
+
+  return new DOMWrapper(document.body).findAll('.v-overlay--active .v-list-item')
+}
+
+async function chooseInFilter(selectLabel: string, optionTitle: string, wrapper: VueWrapper) {
+  const options = await openFilterOptions(selectLabel, wrapper)
+  await options
+    .find((option) => option.find('.v-list-item-title').text() === optionTitle)!
     .trigger('click')
   await flushPromises()
 }
@@ -312,11 +317,27 @@ describe('EventsView', () => {
     stubFetchResponses()
     const wrapper = await mountEventsView()
 
-    await chooseInFilter('Type', 'record.created', wrapper)
-    await chooseInFilter('Source', 'emitter-app', wrapper)
+    await chooseInFilter('Type', 'Record created', wrapper)
+    await chooseInFilter('Source', 'Emitter app', wrapper)
 
     expect(lastEventListUrl()).toBe('/api/events?type=record.created&sourceId=1')
   })
+
+  it.each([
+    ['Type', 'Record created', 'record.created'],
+    ['Source', 'Emitter app', 'emitter-app'],
+  ])(
+    'offers each %s filter option by its readable name above its slug',
+    async (selectLabel, readableName, slug) => {
+      stubFetchResponses()
+      const wrapper = await mountEventsView()
+
+      const [firstOption] = await openFilterOptions(selectLabel, wrapper)
+
+      expect(firstOption!.find('.v-list-item-title').text()).toBe(readableName)
+      expect(firstOption!.find('.v-list-item-subtitle').text()).toBe(slug)
+    },
+  )
 
   it('sends only the states left checked once one is unchecked', async () => {
     stubFetchResponses()
