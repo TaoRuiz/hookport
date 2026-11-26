@@ -168,7 +168,7 @@ describe('SourcesView', () => {
 
     const wrapper = await mountSourcesView()
 
-    expect(wrapper.find('tbody').text()).not.toContain('Show secret')
+    expect(wrapper.find('tbody button[aria-label="Show secret"]').exists()).toBe(false)
     expect(wrapper.find('tbody input[type="checkbox"]').exists()).toBe(false)
   })
 
@@ -212,10 +212,7 @@ describe('SourcesView', () => {
     )
     const wrapper = await mountSourcesView()
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Show secret')!
-      .trigger('click')
+    await wrapper.find('button[aria-label="Show secret"]').trigger('click')
     await flushPromises()
 
     expect(fetch).toHaveBeenLastCalledWith('/api/sources/1/secret')
@@ -234,10 +231,7 @@ describe('SourcesView', () => {
     )
     const wrapper = await mountSourcesView()
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Rename')!
-      .trigger('click')
+    await wrapper.find('button[aria-label="Rename"]').trigger('click')
     await flushPromises()
     await page.find('.v-dialog form input').setValue('Zulu app')
     await flushPromises()
@@ -258,10 +252,7 @@ describe('SourcesView', () => {
     stubFetchResponses(jsonResponse(200, [enabledSource]), jsonResponse(500, {}))
     const wrapper = await mountSourcesView()
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Rename')!
-      .trigger('click')
+    await wrapper.find('button[aria-label="Rename"]').trigger('click')
     await flushPromises()
     await page.find('.v-dialog form').trigger('submit')
     await flushPromises()

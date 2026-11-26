@@ -5,6 +5,7 @@ namespace App\Tests\Controller;
 use App\Entity\Delivery;
 use App\Entity\EventIn;
 use App\Enum\DeliveryStatus;
+use App\Tests\CreatesEventTypes;
 use App\Tests\CreatesSources;
 use App\Tests\CreatesTargets;
 use App\Tests\CreatesUsers;
@@ -14,6 +15,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 final class EventDetailControllerTest extends WebTestCase
 {
+    use CreatesEventTypes;
     use CreatesSources;
     use CreatesTargets;
     use CreatesUsers;
@@ -44,8 +46,8 @@ final class EventDetailControllerTest extends WebTestCase
         self::assertResponseIsSuccessful();
         $shownEvent = json_decode($this->client->getResponse()->getContent(), true);
         self::assertSame((string) $eventIn->getUuid(), $shownEvent['uuid']);
-        self::assertSame('record.created', $shownEvent['type']);
-        self::assertSame(['id' => $source->getId(), 'slug' => 'emitter-app'], $shownEvent['source']);
+        self::assertSame(['slug' => 'record.created', 'label' => null], $shownEvent['type']);
+        self::assertSame(['id' => $source->getId(), 'slug' => 'emitter-app', 'name' => 'Emitter-app'], $shownEvent['source']);
         self::assertSame('evt_1', $shownEvent['externalId']);
         self::assertArrayHasKey('receivedAt', $shownEvent);
         self::assertSame(['field' => 'value'], $shownEvent['payload']);
@@ -58,6 +60,20 @@ final class EventDetailControllerTest extends WebTestCase
             'maxAttempts' => 5,
             'nextAttemptAt' => null,
         ]], $shownEvent['deliveries']);
+    }
+
+    public function testShownEventCarriesTheLabelOfItsCatalogType(): void
+    {
+        $this->createEventType('record.created', 'Record created');
+        $eventIn = new EventIn($this->createSource('emitter-app', 'emitter-shared-secret'), 'evt_1', 'record.created', ['field' => 'value']);
+        $this->entityManager->persist($eventIn);
+        $this->entityManager->flush();
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events/'.$eventIn->getUuid());
+
+        $shownEvent = json_decode($this->client->getResponse()->getContent(), true);
+        self::assertSame(['slug' => 'record.created', 'label' => 'Record created'], $shownEvent['type']);
     }
 
     public function testUnknownEventIsNotFound(): void

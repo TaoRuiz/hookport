@@ -8,8 +8,8 @@ import EventDetailView from '@/views/EventDetailView.vue'
 const eventUuid = '01890000-0000-7000-8000-000000000001'
 const routedEvent = {
   uuid: eventUuid,
-  type: 'record.created',
-  source: { id: 1, slug: 'emitter-app' },
+  type: { slug: 'record.created', label: 'Record created' },
+  source: { id: 1, slug: 'emitter-app', name: 'Emitter app' },
   externalId: 'evt_1',
   receivedAt: '2026-11-10T10:00:00+00:00',
   state: 'needs_attention',
@@ -91,11 +91,23 @@ describe('EventDetailView', () => {
     const wrapper = await mountEventDetailView()
 
     expect(fetch).toHaveBeenCalledWith(`/api/events/${eventUuid}`)
+    expect(wrapper.text()).toContain('Record created')
     expect(wrapper.text()).toContain('record.created')
+    expect(wrapper.text()).toContain('Emitter app')
     expect(wrapper.text()).toContain('emitter-app')
     expect(wrapper.text()).toContain('evt_1')
     expect(wrapper.text()).toContain('Needs attention')
     expect(wrapper.find('pre').text()).toContain('"field": "value"')
+  })
+
+  it('shows the bare slug of a type missing from the catalog', async () => {
+    const eventOfUnknownType = { ...routedEvent, type: { slug: 'record.archived', label: null } }
+    stubFetchResponse(new Response(JSON.stringify(eventOfUnknownType)))
+
+    const wrapper = await mountEventDetailView()
+
+    const typeRow = wrapper.findAll('tr').find((row) => row.find('th').text() === 'Type')!
+    expect(typeRow.find('td').text()).toBe('record.archived')
   })
 
   it('lists the deliveries with their status and attempts', async () => {

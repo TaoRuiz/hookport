@@ -1,9 +1,15 @@
 export type EventState = 'unrouted' | 'in_progress' | 'delivered' | 'needs_attention'
 
+/** The label is null for a type missing from the catalog. */
+export interface ReceivedEventType {
+  slug: string
+  label: string | null
+}
+
 export interface ReceivedEvent {
   uuid: string
-  type: string
-  source: { id: number; slug: string }
+  type: ReceivedEventType
+  source: { id: number; slug: string; name: string }
   externalId: string
   receivedAt: string
   state: EventState
@@ -33,15 +39,28 @@ function buildEventListQueryString(eventListFilters: EventListFilters): string {
   return queryParameters.toString()
 }
 
-export async function listEvents(eventListFilters: EventListFilters): Promise<ReceivedEvent[]> {
-  const queryString = buildEventListQueryString(eventListFilters)
-  const response = await fetch(queryString === '' ? '/api/events' : `/api/events?${queryString}`)
+export interface EventListPage {
+  events: ReceivedEvent[]
+  /** Every event matching the filters, across all pages. */
+  totalCount: number
+}
+
+/** Pages start at 1. */
+export async function listEvents(
+  eventListFilters: EventListFilters,
+  page: number,
+  eventsPerPage: number,
+): Promise<EventListPage> {
+  const queryParameters = new URLSearchParams(buildEventListQueryString(eventListFilters))
+  queryParameters.set('page', String(page))
+  queryParameters.set('perPage', String(eventsPerPage))
+  const response = await fetch(`/api/events?${queryParameters.toString()}`)
 
   if (!response.ok) {
     throw new Error(`Loading events failed with HTTP ${response.status}.`)
   }
 
-  return (await response.json()) as ReceivedEvent[]
+  return (await response.json()) as EventListPage
 }
 
 export type DeliveryStatus = 'pending' | 'retrying' | 'delivered' | 'failed'
@@ -58,7 +77,7 @@ export interface EventDelivery extends EventDeliverySummary {
   nextAttemptAt: string | null
 }
 
-export interface ReceivedEventDetail extends ReceivedEvent {
+export interface ReceivedEventDetail extends Omit<ReceivedEvent, 'deliveries'> {
   payload: unknown
   deliveries: EventDelivery[]
 }

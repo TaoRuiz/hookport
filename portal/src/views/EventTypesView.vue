@@ -65,12 +65,16 @@ onMounted(async () => {
       />
     </div>
 
-    <v-switch
-      v-model="isShowingDisabledEventTypes"
-      label="Show disabled event types"
-      color="primary"
-      hide-details
-    />
+    <div class="d-flex justify-end">
+      <v-switch
+        v-model="isShowingDisabledEventTypes"
+        label="Show disabled event types"
+        color="primary"
+        hide-details
+        density="compact"
+        class="flex-grow-0"
+      />
+    </div>
 
     <v-alert
       v-if="statusChangeErrorMessage"
@@ -87,13 +91,13 @@ onMounted(async () => {
       No event type to show.
     </p>
 
-    <v-table v-else>
+    <v-table v-else density="compact">
       <thead>
         <tr>
           <th>Label</th>
           <th>Slug</th>
           <th>Status</th>
-          <th v-if="authenticatedUserStore.canManageConfiguration">Actions</th>
+          <th v-if="authenticatedUserStore.canManageConfiguration" class="text-end">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -103,20 +107,22 @@ onMounted(async () => {
             <code>{{ eventType.slug }}</code>
           </td>
           <td>
-            <v-chip :color="eventType.enabled ? 'success' : 'grey'" size="small">
+            <v-switch
+              v-if="authenticatedUserStore.canManageConfiguration"
+              :model-value="eventType.enabled"
+              :label="eventType.enabled ? 'Enabled' : 'Disabled'"
+              :aria-label="`Enable ${eventType.slug}`"
+              color="success"
+              density="compact"
+              hide-details
+              @update:model-value="switchEventTypeEnabled(eventType, Boolean($event))"
+            />
+            <v-chip v-else :color="eventType.enabled ? 'success' : 'grey'" size="small">
               {{ eventType.enabled ? 'Enabled' : 'Disabled' }}
             </v-chip>
           </td>
           <td v-if="authenticatedUserStore.canManageConfiguration">
-            <div class="d-flex align-center ga-2">
-              <v-switch
-                :model-value="eventType.enabled"
-                :aria-label="`Enable ${eventType.slug}`"
-                color="success"
-                density="compact"
-                hide-details
-                @update:model-value="switchEventTypeEnabled(eventType, Boolean($event))"
-              />
+            <div class="d-flex justify-end ga-1">
               <EventTypeRelabelDialog :event-type="eventType" @relabeled="replaceEventTypeInList" />
             </div>
           </td>

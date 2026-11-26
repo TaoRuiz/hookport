@@ -5,8 +5,8 @@ import EventsView from '@/views/EventsView.vue'
 
 const deliveredEvent = {
   uuid: '01890000-0000-7000-8000-000000000001',
-  type: 'record.created',
-  source: { id: 1, slug: 'emitter-app' },
+  type: { slug: 'record.created', label: 'Record created' },
+  source: { id: 1, slug: 'emitter-app', name: 'Emitter app' },
   externalId: 'evt_1',
   receivedAt: '2026-11-10T10:00:00+00:00',
   state: 'delivered',
@@ -33,6 +33,10 @@ const eventNeedingAttention = {
 
 let mountedWrapper: VueWrapper | null = null
 
+function eventListResponse(events: unknown[], totalCount = events.length): Response {
+  return new Response(JSON.stringify({ events, totalCount }))
+}
+
 function stubFetchResponse(response: Response): void {
   stubFetchResponses(response)
 }
@@ -50,7 +54,7 @@ function stubFetchResponses(...eventListResponses: (Response | Promise<Response>
       return Promise.resolve(new Response(JSON.stringify([eventType])))
     }
 
-    return Promise.resolve(eventListResponses.shift() ?? new Response(JSON.stringify([])))
+    return Promise.resolve(eventListResponses.shift() ?? eventListResponse([]))
   })
   vi.stubGlobal('fetch', fetchMock)
 }
@@ -82,15 +86,44 @@ function lastEventListUrl(): string {
   return urls[urls.length - 1]!
 }
 
-async function chooseInFilter(selectLabel: string, optionTitle: string, wrapper: VueWrapper) {
+async function openFilterOptions(selectLabel: string, wrapper: VueWrapper) {
   const select = wrapper
     .findAll('.v-select')
     .find((candidate) => candidate.find('label').text() === selectLabel)!
   await select.find('.v-field').trigger('mousedown')
   await flushPromises()
+
+  return new DOMWrapper(document.body).findAll('.v-overlay--active .v-list-item')
+}
+
+async function chooseInFilter(selectLabel: string, optionTitle: string, wrapper: VueWrapper) {
+  const options = await openFilterOptions(selectLabel, wrapper)
+  await options
+    .find((option) => option.find('.v-list-item-title').text() === optionTitle)!
+    .trigger('click')
+  await flushPromises()
+}
+
+async function pickDayOfCurrentMonth(dateLabel: string, dayNumber: number, wrapper: VueWrapper) {
+  await wrapper
+    .findAll('.v-date-input')
+    .find((candidate) => candidate.find('label').text() === dateLabel)!
+    .find('.v-field')
+    .trigger('click')
+  await flushPromises()
   await new DOMWrapper(document.body)
-    .findAll('.v-overlay--active .v-list-item')
-    .find((option) => option.text() === optionTitle)!
+    .findAll(
+      '.v-overlay--active .v-date-picker-month__day:not(.v-date-picker-month__day--adjacent) button',
+    )
+    .find((dayButton) => dayButton.text() === String(dayNumber))!
+    .trigger('click')
+  await flushPromises()
+}
+
+async function goToPage(pageNumber: number, wrapper: VueWrapper) {
+  await wrapper
+    .findAll('.v-pagination button')
+    .find((pageButton) => pageButton.text() === String(pageNumber))!
     .trigger('click')
   await flushPromises()
 }
@@ -130,22 +163,34 @@ describe('EventsView', () => {
   })
 
   it('lists the events with their source, type and global state', async () => {
-    stubFetchResponse(new Response(JSON.stringify([eventNeedingAttention, deliveredEvent])))
+    stubFetchResponse(eventListResponse([eventNeedingAttention, deliveredEvent]))
 
     const wrapper = await mountEventsView()
 
-    expect(fetch).toHaveBeenCalledWith('/api/events')
+    expect(fetch).toHaveBeenCalledWith('/api/events?page=1&perPage=25')
     const rows = wrapper.findAll('tbody tr')
     expect(rows).toHaveLength(2)
     expect(rows[0]!.text()).toContain('evt_2')
     expect(rows[0]!.text()).toContain('Needs attention')
+    expect(rows[1]!.text()).toContain('Record created')
     expect(rows[1]!.text()).toContain('record.created')
+    expect(rows[1]!.text()).toContain('Emitter app')
     expect(rows[1]!.text()).toContain('emitter-app')
     expect(rows[1]!.text()).toContain('Delivered')
   })
 
+  it('shows the bare slug of a type missing from the catalog', async () => {
+    const eventOfUnknownType = { ...deliveredEvent, type: { slug: 'record.archived', label: null } }
+    stubFetchResponse(eventListResponse([eventOfUnknownType]))
+
+    const wrapper = await mountEventsView()
+
+    const typeCell = wrapper.findAll('tbody tr td')[1]!
+    expect(typeCell.text()).toBe('record.archived')
+  })
+
   it('links each event to its detail page', async () => {
-    stubFetchResponse(new Response(JSON.stringify([deliveredEvent])))
+    stubFetchResponse(eventListResponse([deliveredEvent]))
 
     const wrapper = await mountEventsView()
 
@@ -156,7 +201,7 @@ describe('EventsView', () => {
   })
 
   it('shows each delivery as a chip named after its target and linked to the delivery', async () => {
-    stubFetchResponse(new Response(JSON.stringify([eventNeedingAttention])))
+    stubFetchResponse(eventListResponse([eventNeedingAttention]))
 
     const wrapper = await mountEventsView()
 
@@ -177,7 +222,7 @@ describe('EventsView', () => {
   })
 
   it('says when no event was received yet', async () => {
-    stubFetchResponse(new Response(JSON.stringify([])))
+    stubFetchResponse(eventListResponse([]))
 
     const wrapper = await mountEventsView()
 
@@ -194,8 +239,8 @@ describe('EventsView', () => {
 
   it('refreshes the events every five seconds', async () => {
     stubFetchResponses(
-      new Response(JSON.stringify([deliveredEvent])),
-      new Response(JSON.stringify([eventNeedingAttention, deliveredEvent])),
+      eventListResponse([deliveredEvent]),
+      eventListResponse([eventNeedingAttention, deliveredEvent]),
     )
     const wrapper = await mountEventsView()
 
@@ -206,10 +251,7 @@ describe('EventsView', () => {
   })
 
   it('keeps the listed events when a refresh fails', async () => {
-    stubFetchResponses(
-      new Response(JSON.stringify([deliveredEvent])),
-      new Response(null, { status: 500 }),
-    )
+    stubFetchResponses(eventListResponse([deliveredEvent]), new Response(null, { status: 500 }))
     const wrapper = await mountEventsView()
 
     await waitForNextRefresh()
@@ -220,22 +262,22 @@ describe('EventsView', () => {
 
   it('lists only the events matching the searched text', async () => {
     stubFetchResponses(
-      new Response(JSON.stringify([eventNeedingAttention, deliveredEvent])),
-      new Response(JSON.stringify([deliveredEvent])),
+      eventListResponse([eventNeedingAttention, deliveredEvent]),
+      eventListResponse([deliveredEvent]),
     )
     const wrapper = await mountEventsView()
 
     await searchFor(' REF-1234 ', wrapper)
 
-    expect(lastEventListUrl()).toBe('/api/events?search=REF-1234')
+    expect(lastEventListUrl()).toBe('/api/events?search=REF-1234&page=1&perPage=25')
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
   })
 
   it('keeps the search when refreshing', async () => {
     stubFetchResponses(
-      new Response(JSON.stringify([])),
-      new Response(JSON.stringify([deliveredEvent])),
-      new Response(JSON.stringify([deliveredEvent])),
+      eventListResponse([]),
+      eventListResponse([deliveredEvent]),
+      eventListResponse([deliveredEvent]),
     )
     const wrapper = await mountEventsView()
     await searchFor('evt_1', wrapper)
@@ -243,17 +285,14 @@ describe('EventsView', () => {
     await waitForNextRefresh()
 
     expect(eventListUrls()).toEqual([
-      '/api/events',
-      '/api/events?search=evt_1',
-      '/api/events?search=evt_1',
+      '/api/events?page=1&perPage=25',
+      '/api/events?search=evt_1&page=1&perPage=25',
+      '/api/events?search=evt_1&page=1&perPage=25',
     ])
   })
 
   it('says when no event matches the search', async () => {
-    stubFetchResponses(
-      new Response(JSON.stringify([deliveredEvent])),
-      new Response(JSON.stringify([])),
-    )
+    stubFetchResponses(eventListResponse([deliveredEvent]), eventListResponse([]))
     const wrapper = await mountEventsView()
 
     await searchFor('unknown', wrapper)
@@ -264,17 +303,15 @@ describe('EventsView', () => {
   it('ignores a refresh answer that arrives after a new search', async () => {
     const slowRefresh = deferredResponse()
     stubFetchResponses(
-      new Response(JSON.stringify([deliveredEvent])),
+      eventListResponse([deliveredEvent]),
       slowRefresh.response,
-      new Response(JSON.stringify([])),
+      eventListResponse([]),
     )
     const wrapper = await mountEventsView()
     await vi.advanceTimersByTimeAsync(5000)
 
     await searchFor('unknown', wrapper)
-    slowRefresh.resolveResponse(
-      new Response(JSON.stringify([eventNeedingAttention, deliveredEvent])),
-    )
+    slowRefresh.resolveResponse(eventListResponse([eventNeedingAttention, deliveredEvent]))
     await flushPromises()
 
     expect(wrapper.text()).toContain('No event matches the search and filters.')
@@ -284,11 +321,27 @@ describe('EventsView', () => {
     stubFetchResponses()
     const wrapper = await mountEventsView()
 
-    await chooseInFilter('Type', 'record.created', wrapper)
-    await chooseInFilter('Source', 'emitter-app', wrapper)
+    await chooseInFilter('Type', 'Record created', wrapper)
+    await chooseInFilter('Source', 'Emitter app', wrapper)
 
-    expect(lastEventListUrl()).toBe('/api/events?type=record.created&sourceId=1')
+    expect(lastEventListUrl()).toBe('/api/events?type=record.created&sourceId=1&page=1&perPage=25')
   })
+
+  it.each([
+    ['Type', 'Record created', 'record.created'],
+    ['Source', 'Emitter app', 'emitter-app'],
+  ])(
+    'offers each %s filter option by its readable name above its slug',
+    async (selectLabel, readableName, slug) => {
+      stubFetchResponses()
+      const wrapper = await mountEventsView()
+
+      const [firstOption] = await openFilterOptions(selectLabel, wrapper)
+
+      expect(firstOption!.find('.v-list-item-title').text()).toBe(readableName)
+      expect(firstOption!.find('.v-list-item-subtitle').text()).toBe(slug)
+    },
+  )
 
   it('sends only the states left checked once one is unchecked', async () => {
     stubFetchResponses()
@@ -320,21 +373,74 @@ describe('EventsView', () => {
     stubFetchResponses()
     const wrapper = await mountEventsView()
 
-    await wrapper.find('input[type="date"]').setValue('2026-01-10')
-    await wrapper.findAll('input[type="date"]')[1]!.setValue('2026-01-10')
-    await flushPromises()
+    await pickDayOfCurrentMonth('Received from', 10, wrapper)
+    await pickDayOfCurrentMonth('Received to', 10, wrapper)
 
+    const today = new Date()
     const lastQueryParameters = new URLSearchParams(lastEventListUrl().split('?')[1])
     expect(lastQueryParameters.get('receivedFrom')).toBe(
-      new Date('2026-01-10T00:00:00').toISOString(),
+      new Date(today.getFullYear(), today.getMonth(), 10).toISOString(),
     )
     expect(lastQueryParameters.get('receivedBefore')).toBe(
-      new Date('2026-01-11T00:00:00').toISOString(),
+      new Date(today.getFullYear(), today.getMonth(), 11).toISOString(),
     )
   })
 
+  it('hides the pagination when every event fits on one page', async () => {
+    stubFetchResponse(eventListResponse([deliveredEvent], 25))
+
+    const wrapper = await mountEventsView()
+
+    expect(wrapper.text()).toContain('1–1 of 25')
+    expect(wrapper.find('.v-pagination').exists()).toBe(false)
+  })
+
+  it('loads the chosen page and keeps it on the next refresh', async () => {
+    stubFetchResponses(
+      eventListResponse([deliveredEvent], 60),
+      eventListResponse([eventNeedingAttention], 60),
+      eventListResponse([eventNeedingAttention], 60),
+    )
+    const wrapper = await mountEventsView()
+
+    await goToPage(2, wrapper)
+    await waitForNextRefresh()
+
+    expect(wrapper.text()).toContain('26–26 of 60')
+    expect(eventListUrls().slice(1)).toEqual([
+      '/api/events?page=2&perPage=25',
+      '/api/events?page=2&perPage=25',
+    ])
+  })
+
+  it('goes back to the first page when a filter changes', async () => {
+    stubFetchResponses(
+      eventListResponse([deliveredEvent], 60),
+      eventListResponse([deliveredEvent], 60),
+    )
+    const wrapper = await mountEventsView()
+    await goToPage(2, wrapper)
+
+    await chooseInFilter('Source', 'Emitter app', wrapper)
+
+    expect(lastEventListUrl()).toBe('/api/events?sourceId=1&page=1&perPage=25')
+  })
+
+  it('reloads the first page with the chosen number of events per page', async () => {
+    stubFetchResponses(
+      eventListResponse([deliveredEvent], 60),
+      eventListResponse([deliveredEvent], 60),
+    )
+    const wrapper = await mountEventsView()
+    await goToPage(2, wrapper)
+
+    await chooseInFilter('Per page', '50', wrapper)
+
+    expect(lastEventListUrl()).toBe('/api/events?page=1&perPage=50')
+  })
+
   it('stops refreshing once the page is left', async () => {
-    stubFetchResponses(new Response(JSON.stringify([deliveredEvent])))
+    stubFetchResponses(eventListResponse([deliveredEvent]))
     const wrapper = await mountEventsView()
 
     wrapper.unmount()

@@ -64,12 +64,16 @@ onMounted(async () => {
       />
     </div>
 
-    <v-switch
-      v-model="isShowingDisabledMappings"
-      label="Show disabled mappings"
-      color="primary"
-      hide-details
-    />
+    <div class="d-flex justify-end">
+      <v-switch
+        v-model="isShowingDisabledMappings"
+        label="Show disabled mappings"
+        color="primary"
+        hide-details
+        density="compact"
+        class="flex-grow-0"
+      />
+    </div>
 
     <v-alert
       v-if="statusChangeErrorMessage"
@@ -84,7 +88,7 @@ onMounted(async () => {
     <v-progress-linear v-else-if="isLoading" indeterminate />
     <p v-else-if="visibleMappings.length === 0" class="text-medium-emphasis">No mapping to show.</p>
 
-    <v-table v-else>
+    <v-table v-else density="compact">
       <thead>
         <tr>
           <th>Source</th>
@@ -92,7 +96,7 @@ onMounted(async () => {
           <th>Target</th>
           <th>Max attempts</th>
           <th>Status</th>
-          <th v-if="authenticatedUserStore.canManageConfiguration">Actions</th>
+          <th v-if="authenticatedUserStore.canManageConfiguration" class="text-end">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -108,20 +112,22 @@ onMounted(async () => {
           <td>{{ mapping.target.name }}</td>
           <td>{{ mapping.maxAttempts }}</td>
           <td>
-            <v-chip :color="mapping.enabled ? 'success' : 'grey'" size="small">
+            <v-switch
+              v-if="authenticatedUserStore.canManageConfiguration"
+              :model-value="mapping.enabled"
+              :label="mapping.enabled ? 'Enabled' : 'Disabled'"
+              aria-label="Enable mapping"
+              color="success"
+              density="compact"
+              hide-details
+              @update:model-value="switchMappingEnabled(mapping, Boolean($event))"
+            />
+            <v-chip v-else :color="mapping.enabled ? 'success' : 'grey'" size="small">
               {{ mapping.enabled ? 'Enabled' : 'Disabled' }}
             </v-chip>
           </td>
           <td v-if="authenticatedUserStore.canManageConfiguration">
-            <div class="d-flex align-center ga-2">
-              <v-switch
-                :model-value="mapping.enabled"
-                aria-label="Enable mapping"
-                color="success"
-                density="compact"
-                hide-details
-                @update:model-value="switchMappingEnabled(mapping, Boolean($event))"
-              />
+            <div class="d-flex justify-end ga-1">
               <MappingMaxAttemptsDialog :mapping="mapping" @changed="replaceMappingInList" />
             </div>
           </td>

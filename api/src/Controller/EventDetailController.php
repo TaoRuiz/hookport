@@ -6,6 +6,7 @@ use App\Entity\Delivery;
 use App\Entity\EventIn;
 use App\Enum\DeliveryStatus;
 use App\Enum\EventState;
+use App\Repository\EventTypeRepository;
 use Symfony\Bridge\Doctrine\Attribute\MapEntity;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -15,14 +16,20 @@ use Symfony\Component\Routing\Requirement\Requirement;
 final class EventDetailController extends AbstractController
 {
     #[Route('/api/events/{uuid}', name: 'api_events_show', requirements: ['uuid' => Requirement::UUID], methods: ['GET'])]
-    public function showEvent(#[MapEntity(id: 'uuid')] EventIn $eventIn): JsonResponse
+    public function showEvent(#[MapEntity(id: 'uuid')] EventIn $eventIn, EventTypeRepository $eventTypeRepository): JsonResponse
     {
         $deliveries = $eventIn->getDeliveries()->toArray();
+        // The type is a plain slug, not a relation: a type missing from the catalog has no label.
+        $catalogEventType = $eventTypeRepository->findOneBy(['slug' => $eventIn->getType()]);
 
         return $this->json([
             'uuid' => $eventIn->getUuid(),
-            'type' => $eventIn->getType(),
-            'source' => ['id' => $eventIn->getSource()->getId(), 'slug' => $eventIn->getSource()->getSlug()],
+            'type' => ['slug' => $eventIn->getType(), 'label' => $catalogEventType?->getLabel()],
+            'source' => [
+                'id' => $eventIn->getSource()->getId(),
+                'slug' => $eventIn->getSource()->getSlug(),
+                'name' => $eventIn->getSource()->getName(),
+            ],
             'externalId' => $eventIn->getExternalId(),
             'receivedAt' => $eventIn->getReceivedAt(),
             'payload' => $eventIn->getPayload(),

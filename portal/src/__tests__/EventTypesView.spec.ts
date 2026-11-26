@@ -166,7 +166,7 @@ describe('EventTypesView', () => {
 
     const wrapper = await mountEventTypesView()
 
-    expect(wrapper.find('tbody').text()).not.toContain('Rename')
+    expect(wrapper.find('tbody button[aria-label="Rename"]').exists()).toBe(false)
     expect(wrapper.find('tbody input[type="checkbox"]').exists()).toBe(false)
   })
 
@@ -211,10 +211,7 @@ describe('EventTypesView', () => {
     )
     const wrapper = await mountEventTypesView()
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Rename')!
-      .trigger('click')
+    await wrapper.find('button[aria-label="Rename"]').trigger('click')
     await flushPromises()
     await page.find('.v-dialog form input').setValue('Zulu record')
     await flushPromises()
@@ -235,10 +232,7 @@ describe('EventTypesView', () => {
     stubFetchResponses(jsonResponse(200, [enabledEventType]), jsonResponse(500, {}))
     const wrapper = await mountEventTypesView()
 
-    await wrapper
-      .findAll('button')
-      .find((button) => button.text() === 'Rename')!
-      .trigger('click')
+    await wrapper.find('button[aria-label="Rename"]').trigger('click')
     await flushPromises()
     await page.find('.v-dialog form').trigger('submit')
     await flushPromises()

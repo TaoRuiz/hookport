@@ -6,6 +6,7 @@ use App\Entity\Delivery;
 use App\Entity\EventIn;
 use App\Entity\Source;
 use App\Enum\DeliveryStatus;
+use App\Tests\CreatesEventTypes;
 use App\Tests\CreatesSources;
 use App\Tests\CreatesTargets;
 use App\Tests\CreatesUsers;
@@ -16,6 +17,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 final class EventListControllerTest extends WebTestCase
 {
+    use CreatesEventTypes;
     use CreatesSources;
     use CreatesTargets;
     use CreatesUsers;
@@ -38,12 +40,24 @@ final class EventListControllerTest extends WebTestCase
         $this->client->request('GET', '/api/events');
 
         self::assertResponseIsSuccessful();
-        $listedEvents = json_decode($this->client->getResponse()->getContent(), true);
+        $listedEvents = $this->decodeListedEvents();
         self::assertSame([(string) $newerEvent->getUuid(), (string) $olderEvent->getUuid()], array_column($listedEvents, 'uuid'));
-        self::assertSame('record.created', $listedEvents[0]['type']);
-        self::assertSame(['id' => $this->source->getId(), 'slug' => 'emitter-app'], $listedEvents[0]['source']);
+        self::assertSame(['slug' => 'record.created', 'label' => null], $listedEvents[0]['type']);
+        self::assertSame(['id' => $this->source->getId(), 'slug' => 'emitter-app', 'name' => 'Emitter-app'], $listedEvents[0]['source']);
         self::assertSame('evt_2', $listedEvents[0]['externalId']);
         self::assertArrayHasKey('receivedAt', $listedEvents[0]);
+    }
+
+    public function testListedEventCarriesTheLabelOfItsCatalogType(): void
+    {
+        $this->createEventType('record.created', 'Record created');
+        $this->storeEvent('evt_1');
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events');
+
+        $listedEvents = $this->decodeListedEvents();
+        self::assertSame(['slug' => 'record.created', 'label' => 'Record created'], $listedEvents[0]['type']);
     }
 
     /**
@@ -57,7 +71,7 @@ final class EventListControllerTest extends WebTestCase
 
         $this->client->request('GET', '/api/events');
 
-        $listedEvents = json_decode($this->client->getResponse()->getContent(), true);
+        $listedEvents = $this->decodeListedEvents();
         self::assertSame($expectedEventState, $listedEvents[0]['state']);
     }
 
@@ -81,7 +95,7 @@ final class EventListControllerTest extends WebTestCase
         $this->client->request('GET', '/api/events', ['search' => $searchedText]);
 
         self::assertResponseIsSuccessful();
-        $listedEvents = json_decode($this->client->getResponse()->getContent(), true);
+        $listedEvents = $this->decodeListedEvents();
         self::assertSame([(string) $matchingEvent->getUuid()], array_column($listedEvents, 'uuid'));
     }
 
@@ -100,7 +114,7 @@ final class EventListControllerTest extends WebTestCase
 
         $this->client->request('GET', '/api/events', ['search' => 'evt_']);
 
-        self::assertSame([], json_decode($this->client->getResponse()->getContent(), true));
+        self::assertSame([], $this->decodeListedEvents());
     }
 
     public function testBlankSearchListsEveryEvent(): void
@@ -111,7 +125,7 @@ final class EventListControllerTest extends WebTestCase
 
         $this->client->request('GET', '/api/events', ['search' => '  ']);
 
-        self::assertCount(2, json_decode($this->client->getResponse()->getContent(), true));
+        self::assertCount(2, $this->decodeListedEvents());
     }
 
     public function testEachEventListsItsDeliveriesWithTargetAndStatusOrderedByTargetName(): void
@@ -130,7 +144,7 @@ final class EventListControllerTest extends WebTestCase
 
         $this->client->request('GET', '/api/events');
 
-        $listedEventsByExternalId = array_column(json_decode($this->client->getResponse()->getContent(), true), null, 'externalId');
+        $listedEventsByExternalId = array_column($this->decodeListedEvents(), null, 'externalId');
         self::assertSame([
             ['uuid' => (string) $deliveredDelivery->getUuid(), 'target' => ['id' => $accountingTarget->getId(), 'name' => 'Accounting'], 'status' => 'delivered'],
             ['uuid' => (string) $failedDelivery->getUuid(), 'target' => ['id' => $logisticsTarget->getId(), 'name' => 'Logistics'], 'status' => 'failed'],
@@ -149,7 +163,7 @@ final class EventListControllerTest extends WebTestCase
         $this->client->request('GET', '/api/events', ['type' => 'record.created', 'sourceId' => $this->source->getId()]);
 
         self::assertResponseIsSuccessful();
-        self::assertSame(['evt_1'], array_column(json_decode($this->client->getResponse()->getContent(), true), 'externalId'));
+        self::assertSame(['evt_1'], array_column($this->decodeListedEvents(), 'externalId'));
     }
 
     public function testDateFilterKeepsEventsReceivedFromTheFirstDateAndBeforeTheSecond(): void
@@ -163,7 +177,7 @@ final class EventListControllerTest extends WebTestCase
         $this->client->request('GET', '/api/events', ['receivedFrom' => '2026-01-10T00:00:00+00:00', 'receivedBefore' => '2026-01-11T00:00:00+00:00']);
 
         self::assertResponseIsSuccessful();
-        self::assertSame(['evt_last_second', 'evt_first_second'], array_column(json_decode($this->client->getResponse()->getContent(), true), 'externalId'));
+        self::assertSame(['evt_last_second', 'evt_first_second'], array_column($this->decodeListedEvents(), 'externalId'));
     }
 
     public function testDateFilterHonorsTheTimezoneOffsetOfTheDates(): void
@@ -174,7 +188,7 @@ final class EventListControllerTest extends WebTestCase
 
         $this->client->request('GET', '/api/events', ['receivedFrom' => '2026-01-10T00:00:00+01:00']);
 
-        self::assertSame(['evt_inside'], array_column(json_decode($this->client->getResponse()->getContent(), true), 'externalId'));
+        self::assertSame(['evt_inside'], array_column($this->decodeListedEvents(), 'externalId'));
     }
 
     /**
@@ -193,7 +207,7 @@ final class EventListControllerTest extends WebTestCase
         $this->client->request('GET', '/api/events', ['states' => $eventStates]);
 
         self::assertResponseIsSuccessful();
-        self::assertSame($expectedExternalIds, array_column(json_decode($this->client->getResponse()->getContent(), true), 'externalId'));
+        self::assertSame($expectedExternalIds, array_column($this->decodeListedEvents(), 'externalId'));
     }
 
     public static function provideEventStatesAndTheEventsInThem(): iterable
@@ -214,11 +228,63 @@ final class EventListControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
+    public function testListIsSplitIntoPagesAndGivesTheTotalCount(): void
+    {
+        $this->storeEvent('evt_1');
+        $this->storeEvent('evt_2');
+        $this->storeEvent('evt_3');
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events', ['page' => 2, 'perPage' => 2]);
+
+        self::assertSame(['evt_1'], array_column($this->decodeListedEvents(), 'externalId'));
+        self::assertSame(3, json_decode($this->client->getResponse()->getContent(), true)['totalCount']);
+    }
+
+    public function testTotalCountOnlyCountsEventsInTheChosenStates(): void
+    {
+        $this->storeEvent('evt_unrouted');
+        $this->storeEventWithDeliveries([DeliveryStatus::Delivered], 'evt_delivered');
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events', ['states' => ['unrouted']]);
+
+        self::assertSame(1, json_decode($this->client->getResponse()->getContent(), true)['totalCount']);
+    }
+
+    /**
+     * @param array<string, int> $paginationParameters
+     */
+    #[DataProvider('provideInvalidPaginationParameters')]
+    public function testInvalidPaginationIsRefused(array $paginationParameters): void
+    {
+        $this->client->loginUser($this->createUser('demo', ['ROLE_DEMO']));
+
+        $this->client->request('GET', '/api/events', $paginationParameters);
+
+        self::assertResponseStatusCodeSame(422);
+    }
+
+    public static function provideInvalidPaginationParameters(): iterable
+    {
+        yield 'page zero' => [['page' => 0]];
+        yield 'no event per page' => [['perPage' => 0]];
+        yield 'more events per page than allowed' => [['perPage' => 101]];
+    }
+
     public function testAnonymousVisitorCannotListEvents(): void
     {
         $this->client->request('GET', '/api/events');
 
         self::assertResponseStatusCodeSame(401);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function decodeListedEvents(): array
+    {
+        return json_decode($this->client->getResponse()->getContent(), true)['events'];
     }
 
     /**
