@@ -33,6 +33,10 @@ const eventNeedingAttention = {
 
 let mountedWrapper: VueWrapper | null = null
 
+function eventListResponse(events: unknown[], totalCount = events.length): Response {
+  return new Response(JSON.stringify({ events, totalCount }))
+}
+
 function stubFetchResponse(response: Response): void {
   stubFetchResponses(response)
 }
@@ -50,7 +54,7 @@ function stubFetchResponses(...eventListResponses: (Response | Promise<Response>
       return Promise.resolve(new Response(JSON.stringify([eventType])))
     }
 
-    return Promise.resolve(eventListResponses.shift() ?? new Response(JSON.stringify([])))
+    return Promise.resolve(eventListResponses.shift() ?? eventListResponse([]))
   })
   vi.stubGlobal('fetch', fetchMock)
 }
@@ -116,6 +120,14 @@ async function pickDayOfCurrentMonth(dateLabel: string, dayNumber: number, wrapp
   await flushPromises()
 }
 
+async function goToPage(pageNumber: number, wrapper: VueWrapper) {
+  await wrapper
+    .findAll('.v-pagination button')
+    .find((pageButton) => pageButton.text() === String(pageNumber))!
+    .trigger('click')
+  await flushPromises()
+}
+
 async function toggleStateChip(stateLabel: string, wrapper: VueWrapper) {
   await wrapper
     .findAll('.v-chip-group .v-chip')
@@ -151,11 +163,11 @@ describe('EventsView', () => {
   })
 
   it('lists the events with their source, type and global state', async () => {
-    stubFetchResponse(new Response(JSON.stringify([eventNeedingAttention, deliveredEvent])))
+    stubFetchResponse(eventListResponse([eventNeedingAttention, deliveredEvent]))
 
     const wrapper = await mountEventsView()
 
-    expect(fetch).toHaveBeenCalledWith('/api/events')
+    expect(fetch).toHaveBeenCalledWith('/api/events?page=1&perPage=25')
     const rows = wrapper.findAll('tbody tr')
     expect(rows).toHaveLength(2)
     expect(rows[0]!.text()).toContain('evt_2')
@@ -169,7 +181,7 @@ describe('EventsView', () => {
 
   it('shows the bare slug of a type missing from the catalog', async () => {
     const eventOfUnknownType = { ...deliveredEvent, type: { slug: 'record.archived', label: null } }
-    stubFetchResponse(new Response(JSON.stringify([eventOfUnknownType])))
+    stubFetchResponse(eventListResponse([eventOfUnknownType]))
 
     const wrapper = await mountEventsView()
 
@@ -178,7 +190,7 @@ describe('EventsView', () => {
   })
 
   it('links each event to its detail page', async () => {
-    stubFetchResponse(new Response(JSON.stringify([deliveredEvent])))
+    stubFetchResponse(eventListResponse([deliveredEvent]))
 
     const wrapper = await mountEventsView()
 
@@ -189,7 +201,7 @@ describe('EventsView', () => {
   })
 
   it('shows each delivery as a chip named after its target and linked to the delivery', async () => {
-    stubFetchResponse(new Response(JSON.stringify([eventNeedingAttention])))
+    stubFetchResponse(eventListResponse([eventNeedingAttention]))
 
     const wrapper = await mountEventsView()
 
@@ -210,7 +222,7 @@ describe('EventsView', () => {
   })
 
   it('says when no event was received yet', async () => {
-    stubFetchResponse(new Response(JSON.stringify([])))
+    stubFetchResponse(eventListResponse([]))
 
     const wrapper = await mountEventsView()
 
@@ -227,8 +239,8 @@ describe('EventsView', () => {
 
   it('refreshes the events every five seconds', async () => {
     stubFetchResponses(
-      new Response(JSON.stringify([deliveredEvent])),
-      new Response(JSON.stringify([eventNeedingAttention, deliveredEvent])),
+      eventListResponse([deliveredEvent]),
+      eventListResponse([eventNeedingAttention, deliveredEvent]),
     )
     const wrapper = await mountEventsView()
 
@@ -239,10 +251,7 @@ describe('EventsView', () => {
   })
 
   it('keeps the listed events when a refresh fails', async () => {
-    stubFetchResponses(
-      new Response(JSON.stringify([deliveredEvent])),
-      new Response(null, { status: 500 }),
-    )
+    stubFetchResponses(eventListResponse([deliveredEvent]), new Response(null, { status: 500 }))
     const wrapper = await mountEventsView()
 
     await waitForNextRefresh()
@@ -253,22 +262,22 @@ describe('EventsView', () => {
 
   it('lists only the events matching the searched text', async () => {
     stubFetchResponses(
-      new Response(JSON.stringify([eventNeedingAttention, deliveredEvent])),
-      new Response(JSON.stringify([deliveredEvent])),
+      eventListResponse([eventNeedingAttention, deliveredEvent]),
+      eventListResponse([deliveredEvent]),
     )
     const wrapper = await mountEventsView()
 
     await searchFor(' REF-1234 ', wrapper)
 
-    expect(lastEventListUrl()).toBe('/api/events?search=REF-1234')
+    expect(lastEventListUrl()).toBe('/api/events?search=REF-1234&page=1&perPage=25')
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
   })
 
   it('keeps the search when refreshing', async () => {
     stubFetchResponses(
-      new Response(JSON.stringify([])),
-      new Response(JSON.stringify([deliveredEvent])),
-      new Response(JSON.stringify([deliveredEvent])),
+      eventListResponse([]),
+      eventListResponse([deliveredEvent]),
+      eventListResponse([deliveredEvent]),
     )
     const wrapper = await mountEventsView()
     await searchFor('evt_1', wrapper)
@@ -276,17 +285,14 @@ describe('EventsView', () => {
     await waitForNextRefresh()
 
     expect(eventListUrls()).toEqual([
-      '/api/events',
-      '/api/events?search=evt_1',
-      '/api/events?search=evt_1',
+      '/api/events?page=1&perPage=25',
+      '/api/events?search=evt_1&page=1&perPage=25',
+      '/api/events?search=evt_1&page=1&perPage=25',
     ])
   })
 
   it('says when no event matches the search', async () => {
-    stubFetchResponses(
-      new Response(JSON.stringify([deliveredEvent])),
-      new Response(JSON.stringify([])),
-    )
+    stubFetchResponses(eventListResponse([deliveredEvent]), eventListResponse([]))
     const wrapper = await mountEventsView()
 
     await searchFor('unknown', wrapper)
@@ -297,17 +303,15 @@ describe('EventsView', () => {
   it('ignores a refresh answer that arrives after a new search', async () => {
     const slowRefresh = deferredResponse()
     stubFetchResponses(
-      new Response(JSON.stringify([deliveredEvent])),
+      eventListResponse([deliveredEvent]),
       slowRefresh.response,
-      new Response(JSON.stringify([])),
+      eventListResponse([]),
     )
     const wrapper = await mountEventsView()
     await vi.advanceTimersByTimeAsync(5000)
 
     await searchFor('unknown', wrapper)
-    slowRefresh.resolveResponse(
-      new Response(JSON.stringify([eventNeedingAttention, deliveredEvent])),
-    )
+    slowRefresh.resolveResponse(eventListResponse([eventNeedingAttention, deliveredEvent]))
     await flushPromises()
 
     expect(wrapper.text()).toContain('No event matches the search and filters.')
@@ -320,7 +324,7 @@ describe('EventsView', () => {
     await chooseInFilter('Type', 'Record created', wrapper)
     await chooseInFilter('Source', 'Emitter app', wrapper)
 
-    expect(lastEventListUrl()).toBe('/api/events?type=record.created&sourceId=1')
+    expect(lastEventListUrl()).toBe('/api/events?type=record.created&sourceId=1&page=1&perPage=25')
   })
 
   it.each([
@@ -382,8 +386,48 @@ describe('EventsView', () => {
     )
   })
 
+  it('hides the pagination when every event fits on one page', async () => {
+    stubFetchResponse(eventListResponse([deliveredEvent], 25))
+
+    const wrapper = await mountEventsView()
+
+    expect(wrapper.text()).toContain('25 events')
+    expect(wrapper.find('.v-pagination').exists()).toBe(false)
+  })
+
+  it('loads the chosen page and keeps it on the next refresh', async () => {
+    stubFetchResponses(
+      eventListResponse([deliveredEvent], 60),
+      eventListResponse([eventNeedingAttention], 60),
+      eventListResponse([eventNeedingAttention], 60),
+    )
+    const wrapper = await mountEventsView()
+
+    await goToPage(2, wrapper)
+    await waitForNextRefresh()
+
+    expect(wrapper.text()).toContain('60 events')
+    expect(eventListUrls().slice(1)).toEqual([
+      '/api/events?page=2&perPage=25',
+      '/api/events?page=2&perPage=25',
+    ])
+  })
+
+  it('goes back to the first page when a filter changes', async () => {
+    stubFetchResponses(
+      eventListResponse([deliveredEvent], 60),
+      eventListResponse([deliveredEvent], 60),
+    )
+    const wrapper = await mountEventsView()
+    await goToPage(2, wrapper)
+
+    await chooseInFilter('Source', 'Emitter app', wrapper)
+
+    expect(lastEventListUrl()).toBe('/api/events?sourceId=1&page=1&perPage=25')
+  })
+
   it('stops refreshing once the page is left', async () => {
-    stubFetchResponses(new Response(JSON.stringify([deliveredEvent])))
+    stubFetchResponses(eventListResponse([deliveredEvent]))
     const wrapper = await mountEventsView()
 
     wrapper.unmount()

@@ -12,8 +12,12 @@ import { deliveryStatusDisplays } from '@/components/deliveryStatusDisplays'
 import { eventStateDisplays } from '@/components/eventStateDisplays'
 
 const refreshDelayInMilliseconds = 5000
+const EVENTS_PER_PAGE = 25
 
 const receivedEvents = ref<ReceivedEvent[]>([])
+const totalEventsCount = ref(0)
+const currentPage = ref(1)
+const pageCount = computed(() => Math.ceil(totalEventsCount.value / EVENTS_PER_PAGE))
 const isLoading = ref(true)
 const loadingErrorMessage = ref<string | null>(null)
 
@@ -77,15 +81,20 @@ let latestLoadNumber = 0
 // The next refresh is scheduled once the current one ends, so slow answers never overlap.
 async function loadEventsThenScheduleNextRefresh(): Promise<void> {
   const loadNumber = ++latestLoadNumber
-  const loadedEvents = await listEvents(eventListFilters.value).catch(() => null)
+  const loadedEventPage = await listEvents(
+    eventListFilters.value,
+    currentPage.value,
+    EVENTS_PER_PAGE,
+  ).catch(() => null)
 
   // A newer load started meanwhile (new search or filters): its answer and its refresh loop win.
   if (loadNumber !== latestLoadNumber || isUnmounted) {
     return
   }
 
-  if (loadedEvents !== null) {
-    receivedEvents.value = loadedEvents
+  if (loadedEventPage !== null) {
+    receivedEvents.value = loadedEventPage.events
+    totalEventsCount.value = loadedEventPage.totalCount
     loadingErrorMessage.value = null
   } else if (isLoading.value) {
     loadingErrorMessage.value = 'Unable to load events, please try again later.'
@@ -100,12 +109,22 @@ function reloadEventsNow(): void {
   void loadEventsThenScheduleNextRefresh()
 }
 
-function applySearch(): void {
-  appliedSearchedText.value = (searchedText.value ?? '').trim()
+function showPage(page: number): void {
+  currentPage.value = page
   reloadEventsNow()
 }
 
-watch([receivedFromDate, receivedToDate, chosenType, chosenSourceId, chosenStates], reloadEventsNow)
+// New search or filters: the previous page number would point into a different list.
+function showFirstPage(): void {
+  showPage(1)
+}
+
+function applySearch(): void {
+  appliedSearchedText.value = (searchedText.value ?? '').trim()
+  showFirstPage()
+}
+
+watch([receivedFromDate, receivedToDate, chosenType, chosenSourceId, chosenStates], showFirstPage)
 
 // Without the choices, the type and source filters stay empty but the list still works.
 async function loadFilterChoices(): Promise<void> {
@@ -281,5 +300,18 @@ onUnmounted(() => {
         </tr>
       </tbody>
     </v-table>
+
+    <div v-if="receivedEvents.length > 0" class="d-flex align-center mt-2">
+      <span class="text-body-2 text-medium-emphasis">{{ totalEventsCount }} events</span>
+      <v-spacer />
+      <v-pagination
+        v-if="pageCount > 1"
+        :model-value="currentPage"
+        :length="pageCount"
+        :total-visible="7"
+        density="compact"
+        @update:model-value="showPage"
+      />
+    </div>
   </v-container>
 </template>
