@@ -4,7 +4,7 @@ A control tower for events between applications.
 
 Applications send events to HookPort over HTTP. HookPort checks their signature, routes them to the configured targets, keeps a record of every delivery, retries failed ones automatically and lets you replay them by hand. A web dashboard shows what came in, where it went and what needs attention.
 
-Status: work in progress. Event ingestion and the admin screens for sources and targets are in place; routing, delivery and the events dashboard are not built yet.
+Status: work in progress. Ingestion, routing, delivery with retries and replay, the events dashboard and the configuration screens are in place; demo targets and deployment are next.
 
 ## Stack
 
