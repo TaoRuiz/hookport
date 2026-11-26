@@ -426,6 +426,19 @@ describe('EventsView', () => {
     expect(lastEventListUrl()).toBe('/api/events?sourceId=1&page=1&perPage=25')
   })
 
+  it('reloads the first page with the chosen number of events per page', async () => {
+    stubFetchResponses(
+      eventListResponse([deliveredEvent], 60),
+      eventListResponse([deliveredEvent], 60),
+    )
+    const wrapper = await mountEventsView()
+    await goToPage(2, wrapper)
+
+    await chooseInFilter('Per page', '50', wrapper)
+
+    expect(lastEventListUrl()).toBe('/api/events?page=1&perPage=50')
+  })
+
   it('stops refreshing once the page is left', async () => {
     stubFetchResponses(eventListResponse([deliveredEvent]))
     const wrapper = await mountEventsView()

@@ -12,13 +12,15 @@ import { deliveryStatusDisplays } from '@/components/deliveryStatusDisplays'
 import { eventStateDisplays } from '@/components/eventStateDisplays'
 
 const refreshDelayInMilliseconds = 5000
-const EVENTS_PER_PAGE = 25
+// The API refuses more than 100 events per page.
+const EVENTS_PER_PAGE_CHOICES = [10, 25, 50, 100]
 
 const receivedEvents = ref<ReceivedEvent[]>([])
 const totalEventsCount = ref(0)
 const currentPage = ref(1)
-const pageCount = computed(() => Math.ceil(totalEventsCount.value / EVENTS_PER_PAGE))
-const firstShownEventNumber = computed(() => (currentPage.value - 1) * EVENTS_PER_PAGE + 1)
+const eventsPerPage = ref(25)
+const pageCount = computed(() => Math.ceil(totalEventsCount.value / eventsPerPage.value))
+const firstShownEventNumber = computed(() => (currentPage.value - 1) * eventsPerPage.value + 1)
 const lastShownEventNumber = computed(
   () => firstShownEventNumber.value + receivedEvents.value.length - 1,
 )
@@ -88,7 +90,7 @@ async function loadEventsThenScheduleNextRefresh(): Promise<void> {
   const loadedEventPage = await listEvents(
     eventListFilters.value,
     currentPage.value,
-    EVENTS_PER_PAGE,
+    eventsPerPage.value,
   ).catch(() => null)
 
   // A newer load started meanwhile (new search or filters): its answer and its refresh loop win.
@@ -128,7 +130,10 @@ function applySearch(): void {
   showFirstPage()
 }
 
-watch([receivedFromDate, receivedToDate, chosenType, chosenSourceId, chosenStates], showFirstPage)
+watch(
+  [receivedFromDate, receivedToDate, chosenType, chosenSourceId, chosenStates, eventsPerPage],
+  showFirstPage,
+)
 
 // Without the choices, the type and source filters stay empty but the list still works.
 async function loadFilterChoices(): Promise<void> {
@@ -305,7 +310,17 @@ onUnmounted(() => {
       </tbody>
     </v-table>
 
-    <div v-if="receivedEvents.length > 0" class="d-flex align-center mt-2">
+    <div v-if="receivedEvents.length > 0" class="d-flex align-center ga-4 mt-2">
+      <v-select
+        v-model="eventsPerPage"
+        label="Per page"
+        :items="EVENTS_PER_PAGE_CHOICES"
+        density="compact"
+        variant="outlined"
+        width="110"
+        class="flex-grow-0"
+        hide-details
+      />
       <span class="text-body-2 text-medium-emphasis">
         {{ firstShownEventNumber }}–{{ lastShownEventNumber }} of {{ totalEventsCount }}
       </span>
